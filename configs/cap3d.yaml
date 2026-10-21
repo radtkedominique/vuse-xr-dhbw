@@ -1,0 +1,15 @@
+# Konfiguration der Cap3D-Pipeline
+paths:
+  raw: data/raw
+  renders: data/interim/renders
+  output: data/processed/cap3d
+
+render:
+  n_views: 8
+  resolution: 512
+
+caption:
+  model: null      # VLM, siehe docs/research/cap3d.md
+
+summarize:
+  model: null      # LLM, siehe docs/research/cap3d.md
