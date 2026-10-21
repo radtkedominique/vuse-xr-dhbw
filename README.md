@@ -23,3 +23,23 @@ src/vuse_xr/     Python-Package
   io/            Laden von 3D-Assets
 tests/
 ```
+
+## Pipeline 2: Rendern mit Blender (`vuse_xr.cap3d.render`)
+
+**Einmalig**
+1. Blender **3.4.1** (macOS arm64) als `/Applications/Blender-3.4.app` installieren – neuere Versionen laufen nicht mit DiffuRank.
+2. `bash scripts/setup_diffurank.sh` – klont DiffuRank nach `third_party/` und patcht es (OPTIX → OpenImageDenoise u. a.).
+
+**Rendern**
+```bash
+uv run python -m vuse_xr.cap3d.render --mode asset --limit 1   # erst ein Asset testen
+uv run python -m vuse_xr.cap3d.render --mode asset             # alle Assets aus data/raw/3d_assets
+uv run python -m vuse_xr.cap3d.render --mode part              # braucht Pipeline 1
+uv run python -m vuse_xr.cap3d.render --mode highlight         # optional, braucht Pipeline 1
+```
+Optionen: `--only <text>`, `--limit N`, `--force`. Fertige IDs werden übersprungen.
+Output: `data/interim/renders/<modus>/Cap3D_imgs/<id>/00020.png … 00027.png`, Log: `data/interim/renders/<modus>/_blender.log`.
+
+**Pipeline 1 muss liefern:** `data/interim/uid_mapping.json` als
+`{"<asset>__<knoten>": {"asset": "data/raw/3d_assets/x.glb", "node": "<originaler Knotenname>", "file": "data/interim/nodes/<asset>__<knoten>.glb"}}`
+und `object_paths.pkl`. Dateinamen ohne Punkt (DiffuRank schneidet dort ab).

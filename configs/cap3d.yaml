@@ -4,12 +4,27 @@ paths:
   renders: data/interim/renders
   output: data/processed/cap3d
 
+# Pipeline 1 (split_nodes) -> Pipeline 2
+split:
+  object_paths_pkl: data/interim/object_paths.pkl   # absolute Pfade der Teil-GLBs
+  uid_mapping: data/interim/uid_mapping.json        # part_id -> {asset, node, file}
+
 render:
-  n_views: 8
-  resolution: 512
+  n_views: 8           # asset/part: fest 8 durch DiffuRank; wirkt nur auf highlight
+  resolution: 512      # dito
+  blender: /Applications/Blender.app/Contents/MacOS/Blender   # muss 3.4.x sein; überschreibbar mit env BLENDER
+  diffurank_script: third_party/DiffuRank/render_script_type1.py
+  ambient: 1.0         # Umgebungslicht (0 = aus wie im Original, 1 = hell); zu dunkel -> höher
+  device: CPU          # CPU | METAL (Apple-GPU, deutlich schneller)
+  asset_glob: "data/raw/3d_assets/*.glb"
+  highlight:
+    samples: 16
+    context_alpha: 0.15  # Deckkraft der restlichen Teile (0 = unsichtbar, 1 = deckend)
+    highlight_color: [1.0, 0.35, 0.0]
 
 caption:
-  model: null      # VLM, siehe docs/research/cap3d.md
+  model: null          # VLM, siehe docs/research/cap3d.md
+  input_views: part    # part | part+asset | part+highlight
 
 summarize:
-  model: null      # LLM, siehe docs/research/cap3d.md
+  model: null          # LLM, siehe docs/research/cap3d.md

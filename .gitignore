@@ -224,3 +224,6 @@ __marimo__/
 data/**
 !data/**/
 !data/**/.gitkeep
+
+# DiffuRank-Klon (scripts/setup_diffurank.sh)
+third_party/
