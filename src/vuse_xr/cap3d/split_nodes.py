@@ -115,7 +115,7 @@ def export_part(scene: trimesh.Scene, geom_nodes: list[str], out: Path) -> np.nd
         mesh.apply_transform(transform)
         part.add_geometry(mesh, node_name=n, geom_name=f"{n}_geom")
     out.parent.mkdir(parents=True, exist_ok=True)
-    part.export(out, file_type="glb")
+    part.export(out, file_type="glb", include_normals=True)  # sonst fehlen Normalen -> three.js rendert schwarz
     return part.bounds
 
 
