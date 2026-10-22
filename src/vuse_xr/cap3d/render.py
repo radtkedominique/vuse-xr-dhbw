@@ -1,11 +1,17 @@
-"""Pipeline 2: Rendern mit Blender – Modi asset / part / highlight.
+"""Pipeline 2: Rendern – Modi asset / part / highlight, Backend blender (DiffuRank) oder threejs.
 
     uv run python -m vuse_xr.cap3d.render --mode asset
     uv run python -m vuse_xr.cap3d.render --mode part  --only motor
     uv run python -m vuse_xr.cap3d.render --mode highlight --only motor --limit 3
+    uv run python -m vuse_xr.cap3d.render --mode asset --backend threejs   # Backend aus Config überschreiben
+
+Backend (render.backend in configs/cap3d.yaml, oder --backend):
+    blender  Blender 3.4.1 + DiffuRank (Cycles)        -> paths.renders
+    threejs  three.js in headless Chromium (Playwright) -> paths.renders_threejs
+    Beide schreiben dieselbe Ordnerstruktur, nur in getrennte Wurzeln -> direkt vergleichbar.
 
 Output:
-    data/interim/renders/<mode>/Cap3D_imgs/<id>/00020.png … 00027.png
+    <renders>/<mode>/Cap3D_imgs/<id>/00020.png … 00027.png
     asset:     <id> = Asset-Dateiname ohne Endung
     part:      <id> = Teil-Dateiname aus Pipeline 1, z. B. motor__mesh_13
     highlight: <id> = part_id aus uid_mapping.json (= gleicher Name wie bei part)
@@ -35,6 +41,18 @@ VIEW_FILES = [f"{i:05}.png" for i in range(20, 28)]  # 8 Views, Namensschema von
 def load_cfg(path: Path) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+BACKENDS = ("blender", "threejs")
+
+
+def render_root(cfg: dict, mode: str, backend: str | None = None) -> Path:
+    """Ausgabeordner von Pipeline 2 (auch für Pipeline 3): blender -> paths.renders, threejs -> paths.renders_threejs."""
+    backend = backend or cfg["render"].get("backend", "blender")
+    if backend not in BACKENDS:
+        sys.exit(f"Unbekanntes Backend '{backend}' (erlaubt: {', '.join(BACKENDS)})")
+    key = "renders" if backend == "blender" else f"renders_{backend}"
+    return ROOT / cfg["paths"][key] / mode
 
 
 def rid(path: str | Path) -> str:
@@ -87,7 +105,7 @@ def collect_highlight(cfg: dict) -> dict[str, list[dict]]:
     for part_id, entry in mapping.items():
         asset = Path(entry["asset"])
         asset = asset if asset.is_absolute() else ROOT / asset
-        jobs[str(asset.resolve())].append({"part_id": part_id, "node": entry["node"]})
+        jobs[str(asset.resolve())].append({"part_id": part_id, "node": entry["node"], "kind": entry.get("kind", "group")})
     return jobs
 
 
@@ -122,6 +140,7 @@ def run(cmd: list[str], cfg: dict, log_file: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", required=True, choices=["asset", "part", "highlight"])
+    ap.add_argument("--backend", choices=BACKENDS, help="überschreibt render.backend aus der Config")
     ap.add_argument("--config", default=str(ROOT / "configs" / "cap3d.yaml"))
     ap.add_argument("--only", help="nur IDs/Assets, die diesen Text enthalten")
     ap.add_argument("--limit", type=int, help="höchstens N IDs rendern (zum Testen)")
@@ -129,7 +148,8 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_cfg(Path(args.config))
-    out_root = ROOT / cfg["paths"]["renders"] / args.mode
+    backend = args.backend or cfg["render"].get("backend", "blender")
+    out_root = render_root(cfg, args.mode, backend)
     out_root.mkdir(parents=True, exist_ok=True)
 
     def keep(render_id: str) -> bool:
@@ -148,20 +168,17 @@ def main() -> None:
         todo = [p for p in paths if keep(rid(p))][: args.limit]
         expected = [rid(p) for p in todo]
         skipped = len([p for p in paths if (not args.only or args.only in rid(p))]) - len(todo)
-        print(f"[render] Modus {args.mode}: {len(todo)} zu rendern, {skipped} übersprungen/gefiltert")
+        print(f"[render] Modus {args.mode}, Backend {backend}: {len(todo)} zu rendern, {skipped} übersprungen/gefiltert")
         if not todo:
             return
-        todo_pkl = out_root / "_todo.pkl"
-        with open(todo_pkl, "wb") as f:
-            pickle.dump([str(p) for p in todo], f)
-        script = ROOT / cfg["render"]["diffurank_script"]
-        if not script.exists():
-            sys.exit(f"{script} fehlt – erst 'bash scripts/setup_diffurank.sh' ausführen.")
-        cmd = blender_cmd(cfg, script, ["--object_path_pkl", str(todo_pkl), "--parent_dir", str(out_root)])
+        if backend == "threejs":
+            from .threejs_render import render_paths
+            render_paths(todo, out_root, cfg, args.mode)
+        else:
+            run_blender_paths(todo, out_root, cfg)
 
     else:  # highlight
         jobs = collect_highlight(cfg)
-        hl = cfg["render"]["highlight"]
         job_list, expected = [], []
         for asset, parts in jobs.items():
             if args.only and args.only not in Path(asset).stem:  # --only trifft Asset -> alle Teile, sonst Teil-Filter
@@ -172,26 +189,49 @@ def main() -> None:
             if parts:
                 job_list.append({"asset": asset, "parts": parts})
                 expected += [p["part_id"] for p in parts]
-        print(f"[render] Modus highlight: {len(expected)} Teile in {len(job_list)} Asset(s)")
+        print(f"[render] Modus highlight, Backend {backend}: {len(expected)} Teile in {len(job_list)} Asset(s)")
         if not job_list:
             return
-        jobs_json = out_root / "_jobs.json"
-        jobs_json.write_text(json.dumps(job_list, indent=2))
-        cmd = blender_cmd(cfg, HERE / "blender_highlight.py", [
-            "--jobs", str(jobs_json), "--parent_dir", str(out_root),
-            "--views", str(cfg["render"].get("n_views", 8)),
-            "--resolution", str(cfg["render"]["resolution"]), "--samples", str(hl["samples"]),
-            "--context_alpha", str(hl["context_alpha"]),
-            "--color", *[str(c) for c in hl["highlight_color"]],
-        ])
+        if backend == "threejs":
+            from .threejs_render import render_highlight
+            render_highlight(job_list, out_root, cfg)
+        else:
+            run_blender_highlight(job_list, out_root, cfg)
 
-    run(cmd, cfg, out_root / "_blender.log")
     missing = [i for i in expected if not is_done(out_root, i)]
     print(f"[render] {len(expected) - len(missing)}/{len(expected)} vollständig (8 Views)")
     if missing:
         print("[render] unvollständig: " + ", ".join(missing[:20]) + (" …" if len(missing) > 20 else ""))
-        print(f"[render] Details im Log: {(out_root / '_blender.log').relative_to(ROOT)}")
+        if backend == "blender":
+            print(f"[render] Details im Log: {(out_root / '_blender.log').relative_to(ROOT)}")
         sys.exit(1)
+
+
+def run_blender_paths(todo: list[Path], out_root: Path, cfg: dict) -> None:
+    """Modi asset/part mit DiffuRank in Blender 3.4.1."""
+    todo_pkl = out_root / "_todo.pkl"
+    with open(todo_pkl, "wb") as f:
+        pickle.dump([str(p) for p in todo], f)
+    script = ROOT / cfg["render"]["diffurank_script"]
+    if not script.exists():
+        sys.exit(f"{script} fehlt – erst 'bash scripts/setup_diffurank.sh' ausführen.")
+    cmd = blender_cmd(cfg, script, ["--object_path_pkl", str(todo_pkl), "--parent_dir", str(out_root)])
+    run(cmd, cfg, out_root / "_blender.log")
+
+
+def run_blender_highlight(job_list: list[dict], out_root: Path, cfg: dict) -> None:
+    """Modus highlight mit eigener Render-Logik (blender_highlight.py)."""
+    hl = cfg["render"]["highlight"]
+    jobs_json = out_root / "_jobs.json"
+    jobs_json.write_text(json.dumps(job_list, indent=2))
+    cmd = blender_cmd(cfg, HERE / "blender_highlight.py", [
+        "--jobs", str(jobs_json), "--parent_dir", str(out_root),
+        "--views", str(cfg["render"].get("n_views", 8)),
+        "--resolution", str(cfg["render"]["resolution"]), "--samples", str(hl["samples"]),
+        "--context_alpha", str(hl["context_alpha"]),
+        "--color", *[str(c) for c in hl["highlight_color"]],
+    ])
+    run(cmd, cfg, out_root / "_blender.log")
 
 
 if __name__ == "__main__":

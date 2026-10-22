@@ -6,7 +6,7 @@ Kamera wie DiffuRank render_script_type1 (Kreis, leicht erhöht, Abstand 2.0, Sz
 Aufruf (normalerweise über python -m vuse_xr.cap3d.render):
   blender -b -P src/vuse_xr/cap3d/blender_highlight.py -- --jobs jobs.json --parent_dir data/interim/renders/highlight
 
-jobs.json: [{"asset": "/abs/motor.glb", "parts": [{"part_id": "motor__mesh_13", "node": "mesh_13"}, …]}, …]
+jobs.json: [{"asset": "/abs/motor.glb", "parts": [{"part_id": "motor__mesh_13", "node": "mesh_13", "kind": "mesh"}, …]}, …]
 """
 import argparse
 import json
@@ -123,14 +123,20 @@ def clean(name):
     return re.sub(r"[^A-Za-z0-9_-]", "_", name)
 
 
-def find_target(node, objs):
-    """Knotenname aus glTF -> Blender-Objekt(e). Gruppenknoten: alle Meshes darunter."""
+def find_target(node, objs, kind="group"):
+    """Knotenname aus glTF -> Blender-Objekt(e).
+
+    mesh:  nur das Objekt selbst (Zollstock: Segment hat eigenes Mesh UND Folgesegmente als Kinder)
+    group: alle Meshes darunter (Baugruppe, z. B. Lid_Assembly)
+    """
     hit = [o for o in objs if o.name == node]
     if not hit:  # Pipeline 1 hat evtl. bereinigte Namen gespeichert, Blender kürzt auf 63 Zeichen
         hit = [o for o in objs if clean(o.name) == clean(node)[:63] or clean(o.name) == clean(node)]
     if not hit:
         return []
     root = hit[0]
+    if kind == "mesh":
+        return [root] if root.type == "MESH" else []
     return [o for o in [root, *root.children_recursive] if o.type == "MESH"]
 
 
@@ -191,7 +197,7 @@ def main():
 
         for part in job["parts"]:
             pid, node = part["part_id"], part["node"]
-            targets = find_target(node, objs)
+            targets = find_target(node, objs, part.get("kind", "group"))
             if not targets:
                 print(f"[highlight][FEHLER] Knoten '{node}' ({pid}) nicht im Asset gefunden")
                 failed.append(pid)

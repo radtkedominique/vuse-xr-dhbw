@@ -1,16 +1,20 @@
 # Konfiguration der Cap3D-Pipeline
 paths:
   raw: data/raw
-  renders: data/interim/renders
+  renders: data/interim/renders                  # Backend blender
+  renders_threejs: data/interim/renders_threejs  # Backend threejs (gleiche Struktur, getrennt zum Vergleichen)
   output: data/processed/cap3d
 
 # Pipeline 1 (split_nodes) -> Pipeline 2
 split:
+  level: all           # mesh | group | all  (all = Einzel-Meshes + Baugruppen)
+  nodes_dir: data/interim/nodes
   object_paths_pkl: data/interim/object_paths.pkl   # absolute Pfade der Teil-GLBs
-  uid_mapping: data/interim/uid_mapping.json        # part_id -> {asset, node, file}
+  uid_mapping: data/interim/uid_mapping.json        # part_id -> {asset, node, kind, path, file, aliases, size, rel_size}
 
 render:
-  n_views: 8           # asset/part: fest 8 durch DiffuRank; wirkt nur auf highlight
+  backend: blender     # blender | threejs  (überschreibbar mit --backend)
+  n_views: 8           # blender: asset/part fest 8 durch DiffuRank, wirkt nur auf highlight; threejs: alle Modi
   resolution: 512      # dito
   blender: /Applications/Blender.app/Contents/MacOS/Blender   # muss 3.4.x sein; überschreibbar mit env BLENDER
   diffurank_script: third_party/DiffuRank/render_script_type1.py
@@ -21,6 +25,19 @@ render:
     samples: 16
     context_alpha: 0.15  # Deckkraft der restlichen Teile (0 = unsichtbar, 1 = deckend)
     highlight_color: [1.0, 0.35, 0.0]
+  threejs:             # nur für backend: threejs (Setup: bash scripts/setup_threejs.sh)
+    three_dir: third_party/three
+    headless: true     # false = sichtbares Chromium-Fenster (nutzt sicher die GPU)
+    channel: chromium  # "chromium" = neuer Headless-Modus (volles Chromium); null = Playwright-Headless-Shell
+    chromium_args: ["--ignore-gpu-blocklist", "--enable-gpu", "--enable-unsafe-swiftshader"]  # letzteres = Software-Fallback ohne GPU
+    supersample: 1     # 2 = in doppelter Auflösung rendern und verkleinern (glattere Kanten, dünne Teile)
+    point_light: 79.6  # Blender-Standardlicht 1000 W / 4π (Candela); 0 = nur Umgebungslicht
+    shadows: true      # Schatten vom Punktlicht (Cycles hat sie immer)
+    ao: true           # Umgebungsverdeckung (Spalten/Innenräume dunkel wie in Cycles); nur asset/part
+    ao_radius: 0.25    # Reichweite in Modell-Einheiten (Asset ist auf Größe 1 normalisiert)
+    ao_intensity: 1.0  # 0 = aus, 1 = voll
+    energy: blender    # blender = Glanz addiert wie Cycles/Principled v1 (heller) | three = energieerhaltend wie im VUSE-Hub
+    colorspace: auto   # auto = wie Blender (asset/part linear wie DiffuRank-"Raw", highlight sRGB) | linear | srgb
 
 caption:
   model: null          # VLM, siehe docs/research/cap3d.md
