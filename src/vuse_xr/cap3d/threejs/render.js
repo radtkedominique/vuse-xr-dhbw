@@ -1,5 +1,4 @@
 // Pipeline 2, Backend threejs – läuft im headless Chromium, gesteuert von threejs_render.py.
-// Bildet blender_highlight.py / DiffuRank render_script_type1 nach:
 // Szene auf Einheitsgröße, Kamera im Kreis (leicht erhöht, Abstand 2.0, Blender-Standardkamera),
 // weißes Umgebungslicht + Blender-Standard-Punktlicht, transparenter Hintergrund.
 import * as THREE from 'three';
@@ -198,7 +197,6 @@ function meshBox(objs) {
 }
 
 window.vuseHighlightSetup = (o) => {
-  // Farben wie in blender_highlight.py (lineare Werte)
   ctxMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.6, 0.6, 0.6), roughness: 0.6,
     transparent: o.context_alpha < 1, opacity: o.context_alpha, depthWrite: o.context_alpha >= 1,
