@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Projekt ---
+.idea/
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# three.js (scripts/setup_threejs.sh)
+third_party/

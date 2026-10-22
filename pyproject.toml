@@ -1,7 +1,21 @@
 [project]
 name = "vuse-xr-dhbw"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-based grounding of natural language to 3D assets and scene-graph nodes (DHBW x VUSE XR)"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.4",
+    "pillow>=13.0.0",
+    "playwright>=1.48",
+    "pyyaml>=6.0.3",
+    "scipy>=1.18.1",
+    "trimesh>=5.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "vuse_xr"
