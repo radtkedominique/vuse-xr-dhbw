@@ -63,7 +63,7 @@ und `object_paths.pkl`. Dateinamen ohne Punkt (DiffuRank schneidet dort ab).
 
 ```bash
 uv run python -m vuse_xr.cap3d.split_nodes          # alle Assets, dauert wenige Sekunden
-uv run python -m vuse_xr.cap3d.split_nodes --only centrifuge --force
+uv run python -m vuse_xr.cap3d.split_nodes --force --limit 1  # nur ein Asset, erzwingt Überschreiben
 ```
 Teile (`split.level`): `mesh` = Knoten mit eigenem Mesh, `group` = Baugruppen (z. B. `Lid_Assembly`), `all` = beides.
 Hüllen mit nur einem Mesh darunter werden als `aliases` beim Mesh vermerkt, nicht doppelt exportiert.
