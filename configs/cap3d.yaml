@@ -1,8 +1,7 @@
 # Konfiguration der Cap3D-Pipeline
 paths:
   raw: data/raw
-  renders: data/interim/renders                  # Backend blender
-  renders_threejs: data/interim/renders_threejs  # Backend threejs (gleiche Struktur, getrennt zum Vergleichen)
+  renders: data/interim/renders_threejs          # Output Pipeline 2 (three.js)
   output: data/processed/cap3d
 
 # Pipeline 1 (split_nodes) -> Pipeline 2
@@ -13,19 +12,14 @@ split:
   uid_mapping: data/interim/uid_mapping.json        # part_id -> {asset, node, kind, path, file, aliases, size, rel_size}
 
 render:
-  backend: threejs     # threejs | blender  (überschreibbar mit --backend)
-  n_views: 8           # blender: asset/part fest 8 durch DiffuRank, wirkt nur auf highlight; threejs: alle Modi
-  resolution: 512      # dito
-  blender: /Applications/Blender.app/Contents/MacOS/Blender   # muss 3.4.x sein; überschreibbar mit env BLENDER
-  diffurank_script: third_party/DiffuRank/render_script_type1.py
-  ambient: 1.0         # Umgebungslicht (0 = aus wie im Original, 1 = hell); zu dunkel -> höher
-  device: CPU          # CPU | METAL (Apple-GPU, deutlich schneller)
+  n_views: 8           # Views pro ID (alle Modi)
+  resolution: 512      # Bildgröße in Pixeln
+  ambient: 1.0         # Umgebungslicht (0 = aus wie im Cap3D-Original, 1 = hell); zu dunkel -> höher
   asset_glob: "data/raw/3d_assets/*.glb"
   highlight:
-    samples: 16
     context_alpha: 0.15  # Deckkraft der restlichen Teile (0 = unsichtbar, 1 = deckend)
     highlight_color: [1.0, 0.35, 0.0]
-  threejs:             # nur für backend: threejs (Setup: bash scripts/setup_threejs.sh)
+  threejs:             # Setup: bash scripts/setup_threejs.sh
     three_dir: third_party/three
     headless: true     # false = sichtbares Chromium-Fenster (nutzt sicher die GPU)
     channel: chromium  # "chromium" = neuer Headless-Modus (volles Chromium); null = Playwright-Headless-Shell

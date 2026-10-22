@@ -20,17 +20,17 @@ notebooks/       Exploration
 scripts/         Einstiegspunkte
 src/vuse_xr/     Python-Package
   cap3d/         Cap3D-Pipeline: render -> caption -> summarize
-  io/            Laden von 3D-Assets
 tests/
 ```
 
-## Pipeline 2: Rendern mit Blender oder three.js (`vuse_xr.cap3d.render`)
+## Pipeline 2: Rendern mit three.js (`vuse_xr.cap3d.render`)
 
-Standard-Backend ist **three.js** (siehe unten). Die Befehle gelten für beide Backends; Blender mit `--backend blender`.
+Gerendert wird mit three.js in headless Chromium (Playwright): Kamera im Kreis (leicht erhöht), Szene auf Einheitsgröße normalisiert, transparenter Hintergrund – wie bei Cap3D.
 
-**Einmalig (nur Backend blender)**
-1. Blender **3.4.1** (macOS arm64) als `/Applications/Blender-3.4.app` installieren – neuere Versionen laufen nicht mit DiffuRank.
-2. `bash scripts/setup_diffurank.sh` – klont DiffuRank nach `third_party/` und patcht es (OPTIX → OpenImageDenoise u. a.).
+**Einmalig**
+```bash
+bash scripts/setup_threejs.sh   # three.js nach third_party/, Chromium für Playwright
+```
 
 **Rendern**
 ```bash
@@ -40,24 +40,15 @@ uv run python -m vuse_xr.cap3d.render --mode part              # braucht Pipelin
 uv run python -m vuse_xr.cap3d.render --mode highlight         # optional, braucht Pipeline 1
 ```
 Optionen: `--only <text>`, `--limit N`, `--force`. Fertige IDs werden übersprungen.
-Output Blender: `data/interim/renders/<modus>/Cap3D_imgs/<id>/00020.png … 00027.png`, Log: `data/interim/renders/<modus>/_blender.log`.
-
-### Standard-Backend: three.js (`render.backend: threejs`)
-Gleiche Modi, Kamera, Normalisierung und Ordnerstruktur wie Blender, gerendert mit three.js in headless Chromium (Playwright). Kein Blender nötig.
-
-```bash
-bash scripts/setup_threejs.sh                                          # einmalig: three.js nach third_party/, Chromium für Playwright
-uv run python -m vuse_xr.cap3d.render --mode asset                     # Standard ist threejs; Blender mit --backend blender
-uv run python scripts/compare_renders.py --mode asset                  # Vergleichsbilder Blender oben / three.js unten
-```
-Output: `data/interim/renders_threejs/<modus>/…` (getrennt von Blender, damit beide nebeneinander liegen).
-Pipeline 3 holt den Ordner über `render_root(cfg, mode)` aus `vuse_xr.cap3d.render`, dann folgt sie automatisch `render.backend`.
+Output: `data/interim/renders_threejs/<modus>/Cap3D_imgs/<id>/00020.png … 00027.png`.
+Pipeline 3 holt den Ordner über `render_root(cfg, mode)` aus `vuse_xr.cap3d.render`.
 Beim Start steht im Log, welche GPU WebGL nutzt. Bei `SwiftShader` läuft es ohne GPU (langsamer); dann `render.threejs.headless: false` testen.
-Abgleich mit Blender: `energy: blender` (Glanz wird addiert wie in Cycles 3.4), `ao: true` (Spalten/Innenräume verschattet, Screen-Space-AO). Restunterschied: Metall spiegelt nur die weiße Umgebung, nicht die Szene; keine `*_depth.png`/`*.json` pro View.
+Licht und Materialien sind an das frühere Blender-Backend (Cycles 3.4) angeglichen: `energy: blender` (Glanz wird addiert), `ao: true` (Spalten/Innenräume verschattet, Screen-Space-AO).
+Das Blender-Backend wurde entfernt; die Vergleichsbilder Blender vs. three.js liegen lokal in `data/interim/renders_compare/`.
 
 **Pipeline 1 muss liefern:** `data/interim/uid_mapping.json` als
 `{"<asset>__<knoten>": {"asset": "data/raw/3d_assets/x.glb", "node": "<originaler Knotenname>", "file": "data/interim/nodes/<asset>__<knoten>.glb"}}`
-und `object_paths.pkl`. Dateinamen ohne Punkt (DiffuRank schneidet dort ab).
+und `object_paths.pkl`. Dateinamen ohne Punkt (die Render-ID endet am ersten Punkt).
 
 ## Pipeline 1: Assets in Teile zerlegen (`vuse_xr.cap3d.split_nodes`)
 

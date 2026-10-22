@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pipeline 2 (Backend threejs) – Setup: three.js-Paket nach third_party/three holen.
+# Pipeline 2 – Setup: three.js-Paket nach third_party/three holen.
 # Aufruf aus dem Repo-Root:  bash scripts/setup_threejs.sh
 # Kein Node/npm nötig, das Paket kommt als Tarball direkt aus der npm-Registry.
 set -euo pipefail

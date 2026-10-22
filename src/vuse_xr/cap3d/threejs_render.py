@@ -1,6 +1,6 @@
-"""Pipeline 2, Backend threejs: gleiche Modi und gleicher Output wie Blender, gerendert mit three.js.
+"""Pipeline 2: Render-Logik mit three.js (Modi asset / part / highlight).
 
-Wird von render.py aufgerufen (render.backend: threejs oder --backend threejs), nicht direkt.
+Wird von render.py aufgerufen, nicht direkt.
 three.js läuft in headless Chromium (Playwright). Die Seite (threejs/render.html + render.js) und alle
 Dateien werden über page.route() aus dem Repo ausgeliefert, es läuft kein Server.
 
@@ -45,7 +45,7 @@ class ThreeRenderer:
         self.n_views = int(r.get("n_views", 8))
         self.ss = int(self.t.get("supersample", 1))
         colorspace = self.t.get("colorspace", "auto")
-        if colorspace == "auto":  # wie das Blender-Gegenstück: DiffuRank speichert "Raw" (linear), blender_highlight.py sRGB
+        if colorspace == "auto":  # wie im früheren Blender-Backend: asset/part linear ("Raw"), highlight sRGB
             colorspace = "srgb" if mode == "highlight" else "linear"
         self.opts = {
             "resolution": self.resolution, "supersample": self.ss,
@@ -82,7 +82,7 @@ class ThreeRenderer:
             print(f"[browser] {msg.text}")
 
     def __enter__(self) -> "ThreeRenderer":
-        from playwright.sync_api import sync_playwright  # erst hier, damit das Blender-Backend ohne Playwright läuft
+        from playwright.sync_api import sync_playwright
 
         self._pw = sync_playwright().start()
         launch = {"headless": bool(self.t.get("headless", True)), "args": list(self.t.get("chromium_args") or [])}

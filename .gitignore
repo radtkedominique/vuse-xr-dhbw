@@ -225,5 +225,5 @@ data/**
 !data/**/
 !data/**/.gitkeep
 
-# DiffuRank-Klon (scripts/setup_diffurank.sh)
+# three.js (scripts/setup_threejs.sh)
 third_party/
