@@ -70,7 +70,7 @@ class ThreeRenderer:
         elif path.startswith("/three/"):
             f = self.three_dir / path[len("/three/"):]
         elif path.startswith("/f/"):
-            f = Path(path[len("/f"):])  # absoluter Pfad zum Asset (+ evtl. .bin/Texturen daneben)
+            f = Path(path[len("/f"):])  # absoluter Pfad zum Asset
         else:
             f = None
         if f is None or not f.is_file():
