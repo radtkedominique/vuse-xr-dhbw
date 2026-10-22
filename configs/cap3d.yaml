@@ -13,7 +13,7 @@ split:
   uid_mapping: data/interim/uid_mapping.json        # part_id -> {asset, node, kind, path, file, aliases, size, rel_size}
 
 render:
-  backend: blender     # blender | threejs  (überschreibbar mit --backend)
+  backend: threejs     # threejs | blender  (überschreibbar mit --backend)
   n_views: 8           # blender: asset/part fest 8 durch DiffuRank, wirkt nur auf highlight; threejs: alle Modi
   resolution: 512      # dito
   blender: /Applications/Blender.app/Contents/MacOS/Blender   # muss 3.4.x sein; überschreibbar mit env BLENDER

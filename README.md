@@ -26,7 +26,9 @@ tests/
 
 ## Pipeline 2: Rendern mit Blender oder three.js (`vuse_xr.cap3d.render`)
 
-**Einmalig**
+Standard-Backend ist **three.js** (siehe unten). Die Befehle gelten für beide Backends; Blender mit `--backend blender`.
+
+**Einmalig (nur Backend blender)**
 1. Blender **3.4.1** (macOS arm64) als `/Applications/Blender-3.4.app` installieren – neuere Versionen laufen nicht mit DiffuRank.
 2. `bash scripts/setup_diffurank.sh` – klont DiffuRank nach `third_party/` und patcht es (OPTIX → OpenImageDenoise u. a.).
 
@@ -38,14 +40,14 @@ uv run python -m vuse_xr.cap3d.render --mode part              # braucht Pipelin
 uv run python -m vuse_xr.cap3d.render --mode highlight         # optional, braucht Pipeline 1
 ```
 Optionen: `--only <text>`, `--limit N`, `--force`. Fertige IDs werden übersprungen.
-Output: `data/interim/renders/<modus>/Cap3D_imgs/<id>/00020.png … 00027.png`, Log: `data/interim/renders/<modus>/_blender.log`.
+Output Blender: `data/interim/renders/<modus>/Cap3D_imgs/<id>/00020.png … 00027.png`, Log: `data/interim/renders/<modus>/_blender.log`.
 
-### Alternatives Backend: three.js (`render.backend: threejs`)
+### Standard-Backend: three.js (`render.backend: threejs`)
 Gleiche Modi, Kamera, Normalisierung und Ordnerstruktur wie Blender, gerendert mit three.js in headless Chromium (Playwright). Kein Blender nötig.
 
 ```bash
 bash scripts/setup_threejs.sh                                          # einmalig: three.js nach third_party/, Chromium für Playwright
-uv run python -m vuse_xr.cap3d.render --mode asset --backend threejs   # oder render.backend: threejs in configs/cap3d.yaml
+uv run python -m vuse_xr.cap3d.render --mode asset                     # Standard ist threejs; Blender mit --backend blender
 uv run python scripts/compare_renders.py --mode asset                  # Vergleichsbilder Blender oben / three.js unten
 ```
 Output: `data/interim/renders_threejs/<modus>/…` (getrennt von Blender, damit beide nebeneinander liegen).

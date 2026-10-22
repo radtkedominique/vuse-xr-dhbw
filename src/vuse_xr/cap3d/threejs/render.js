@@ -134,7 +134,12 @@ window.vuseLoad = async (url) => {
   drop.forEach((o) => o.removeFromParent());
   let meshes = 0;
   root.traverse((o) => {
-    if (o.isMesh) { meshes++; o.castShadow = o.receiveShadow = opts.shadows; }
+    if (!o.isMesh) return;
+    meshes++;
+    o.castShadow = o.receiveShadow = opts.shadows;
+    // Teil-GLBs aus Pipeline 1 (trimesh-Export) haben keine Normalen -> ohne das alles schwarz.
+    // Blender rechnet sie beim Import selbst nach; trimesh lässt die Vertices getrennt, harte Kanten bleiben hart.
+    if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
   });
   scene.add(root);
   normalize(root);
