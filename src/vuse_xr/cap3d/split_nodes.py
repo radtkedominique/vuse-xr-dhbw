@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import logging
 import pickle
 import re
 import struct
@@ -33,8 +34,11 @@ import numpy as np
 import trimesh
 import yaml
 
+from ..log import add_log_args, setup_logging
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+log = logging.getLogger("vuse_xr.cap3d.split_nodes")  # fester Name: bei python -m wäre __name__ == "__main__"
 
 
 def clean(name: str) -> str:
@@ -131,7 +135,7 @@ def split_asset(asset: Path, nodes_dir: Path, level: str, force: bool) -> dict[s
     mapping, used = {}, set()
     for p in parts:
         if p["node"] not in scene.graph.transforms.children and p["node"] not in scene.graph.nodes_geometry:
-            print(f"  [warn] Knoten '{p['node']}' fehlt im trimesh-Graph, übersprungen")
+            log.warning("%s: Knoten '%s' fehlt im trimesh-Graph, übersprungen", stem, p["node"])
             continue
         part_id = f"{stem}__{clean(p['node'])}"
         while part_id in used:  # Kollision nach Bereinigung (z. B. 'a.1' und 'a_1')
@@ -167,7 +171,9 @@ def main() -> None:
     ap.add_argument("--limit", type=int, help="nur die ersten N Assets (alphabetisch, zum Testen)")
     ap.add_argument("--level", choices=["mesh", "group", "all"], help="überschreibt split.level aus der Config")
     ap.add_argument("--force", action="store_true", help="bereits exportierte Teile neu schreiben")
+    add_log_args(ap)
     args = ap.parse_args()
+    setup_logging(args.verbose, args.quiet)
 
     cfg = yaml.safe_load(open(args.config))
     sc = cfg["split"]
@@ -191,14 +197,14 @@ def main() -> None:
     for a in assets:
         m = split_asset(a, nodes_dir, level, args.force)
         n_mesh = sum(v["kind"] == "mesh" for v in m.values())
-        print(f"[split] {a.stem}: {len(m)} Teile ({n_mesh} mesh, {len(m) - n_mesh} group)")
+        log.info("%s: %d Teile (%d mesh, %d group)", a.stem, len(m), n_mesh, len(m) - n_mesh)
         mapping.update(m)
 
     map_path.parent.mkdir(parents=True, exist_ok=True)
     map_path.write_text(json.dumps(mapping, indent=2, ensure_ascii=False))
     with open(pkl_path, "wb") as f:
         pickle.dump([str((ROOT / v["file"]).resolve()) for v in mapping.values()], f)
-    print(f"[split] gesamt {len(mapping)} Teile -> {map_path.relative_to(ROOT)}, {pkl_path.relative_to(ROOT)}")
+    log.info("gesamt %d Teile -> %s, %s", len(mapping), map_path.relative_to(ROOT), pkl_path.relative_to(ROOT))
 
 
 if __name__ == "__main__":

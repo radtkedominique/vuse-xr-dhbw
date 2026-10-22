@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import time
 import urllib.parse
 from pathlib import Path
@@ -26,6 +27,8 @@ MIME = {
     ".webp": "image/webp", ".ktx2": "image/ktx2",
 }
 SOFTWARE_GPU = ("swiftshader", "llvmpipe", "software")
+log = logging.getLogger(__name__)
+browser_log = logging.getLogger(f"{__name__}.browser")  # Konsole/Fehler aus Chromium
 
 
 def file_url(path: Path) -> str:
@@ -77,9 +80,12 @@ class ThreeRenderer:
 
     @staticmethod
     def _console(msg) -> None:
-        if msg.type == "error" or (msg.type == "warning" and "GL Driver Message" not in msg.text
-                                   and "software WebGL" not in msg.text):
-            print(f"[browser] {msg.text}")
+        if msg.type == "error":
+            browser_log.error("%s", msg.text)
+        elif msg.type == "warning" and "GL Driver Message" not in msg.text and "software WebGL" not in msg.text:
+            browser_log.warning("%s", msg.text)
+        else:  # log, info, gefilterte GL-Warnungen: nur mit -v
+            browser_log.debug("%s: %s", msg.type, msg.text)
 
     def __enter__(self) -> "ThreeRenderer":
         from playwright.sync_api import sync_playwright
@@ -92,13 +98,13 @@ class ThreeRenderer:
         self.page = self._browser.new_page(viewport={"width": 64, "height": 64})
         self.page.route(f"{ORIGIN}/**", self._serve)
         self.page.on("console", self._console)
-        self.page.on("pageerror", lambda e: print(f"[browser][FEHLER] {e}"))
+        self.page.on("pageerror", lambda e: browser_log.error("Seitenfehler: %s", e))
         self.page.goto(f"{ORIGIN}/")
         self.page.wait_for_function("window.vuseReady === true", timeout=30_000)
         info = self.page.evaluate("o => vuseInit(o)", self.opts)
-        print(f"[threejs] three r{info['three']}, WebGL-Renderer: {info['gpu']}")
+        log.info("three r%s, WebGL-Renderer: %s", info["three"], info["gpu"])
         if any(s in info["gpu"].lower() for s in SOFTWARE_GPU):
-            print("[threejs][warn] Software-Rendering (keine GPU) – langsam. Siehe render.threejs.headless/channel/chromium_args.")
+            log.warning("Software-Rendering (keine GPU) – langsam. Siehe render.threejs.headless/channel/chromium_args.")
         return self
 
     def __exit__(self, *exc) -> None:
@@ -133,9 +139,9 @@ def render_paths(paths: list[Path], out_root: Path, cfg: dict, mode: str = "asse
                 r.load(p)
                 r.save(r.page.evaluate("n => vuseRenderViews(n)", r.n_views), out_root / "Cap3D_imgs" / rid)
                 n_done += 1
-                print(f"[threejs] {k}/{len(paths)} {rid}: {time.time() - t0:.1f} s")
+                log.info("%d/%d %s: %.1f s", k, len(paths), rid, time.time() - t0)
             except Exception as e:  # ein kaputtes Asset soll nicht den ganzen Lauf abbrechen
-                print(f"[threejs][FEHLER] {rid}: {e}")
+                log.error("%s: %s", rid, e, exc_info=log.isEnabledFor(logging.DEBUG))
         _timing(t_all, n_done * r.n_views)
 
 
@@ -147,19 +153,19 @@ def render_highlight(job_list: list[dict], out_root: Path, cfg: dict) -> None:
     with ThreeRenderer(cfg, "highlight") as r:
         for job in job_list:
             t0 = time.time()
-            print(f"[threejs] Asset {Path(job['asset']).name}: {len(job['parts'])} Teile")
+            log.info("Asset %s: %d Teile", Path(job["asset"]).name, len(job["parts"]))
             try:
                 r.load(Path(job["asset"]))
                 r.page.evaluate("o => vuseHighlightSetup(o)", setup)
             except Exception as e:
-                print(f"[threejs][FEHLER] {job['asset']}: {e}")
+                log.error("%s: %s", job["asset"], e, exc_info=log.isEnabledFor(logging.DEBUG))
                 failed += [p["part_id"] for p in job["parts"]]
                 continue
             for part in job["parts"]:
                 pid, node = part["part_id"], part["node"]
                 res = r.page.evaluate("([n, k, v]) => vuseRenderPart(n, k, v)", [node, part.get("kind", "group"), r.n_views])
                 if "error" in res:
-                    print(f"[threejs][FEHLER] {pid}: {res['error']}")
+                    log.error("%s: %s", pid, res["error"])
                     failed.append(pid)
                     continue
                 out = out_root / "Cap3D_imgs" / pid
@@ -169,15 +175,15 @@ def render_highlight(job_list: list[dict], out_root: Path, cfg: dict) -> None:
                     {"asset": job["asset"], "node": node, "matched": res["matched"], "rel_size": round(rel, 4),
                      "backend": "threejs"}, indent=2))
                 if rel < 0.05:
-                    print(f"[threejs][warn] {pid}: Teil ist nur {rel:.1%} der Asset-Größe – im Bild evtl. kaum sichtbar")
+                    log.warning("%s: Teil ist nur %.1f %% der Asset-Größe – im Bild evtl. kaum sichtbar", pid, 100 * rel)
                 n_done += 1
-            print(f"[threejs] Asset fertig in {time.time() - t0:.0f} s")
+            log.info("Asset fertig in %.0f s", time.time() - t0)
         _timing(t_all, n_done * r.n_views)
     if failed:
-        print(f"[threejs] {len(failed)} Teile fehlgeschlagen: {', '.join(failed[:20])}" + (" …" if len(failed) > 20 else ""))
+        log.error("%d Teile fehlgeschlagen: %s%s", len(failed), ", ".join(failed[:20]), " …" if len(failed) > 20 else "")
 
 
 def _timing(t0: float, n_views: int) -> None:
     dt = time.time() - t0
     if n_views:
-        print(f"[threejs] {n_views} Views in {dt:.0f} s ({1000 * dt / n_views:.0f} ms pro View inkl. Laden)")
+        log.info("%d Views in %.0f s (%.0f ms pro View inkl. Laden)", n_views, dt, 1000 * dt / n_views)

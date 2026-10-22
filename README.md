@@ -40,6 +40,7 @@ uv run python -m vuse_xr.cap3d.render --mode part              # braucht Pipelin
 uv run python -m vuse_xr.cap3d.render --mode highlight         # optional, braucht Pipeline 1
 ```
 Optionen: `--only <text>`, `--limit N`, `--force`. Fertige IDs werden übersprungen.
+Logging (beide Pipelines, auf stderr): `-v` = Debug inkl. Tracebacks und Browser-Konsole, `-q` = nur Warnungen/Fehler.
 Output: `data/interim/renders_threejs/<modus>/Cap3D_imgs/<id>/00020.png … 00027.png`.
 Pipeline 3 holt den Ordner über `render_root(cfg, mode)` aus `vuse_xr.cap3d.render`.
 Beim Start steht im Log, welche GPU WebGL nutzt. Bei `SwiftShader` läuft es ohne GPU (langsamer); dann `render.threejs.headless: false` testen.

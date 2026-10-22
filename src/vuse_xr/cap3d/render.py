@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import logging
 import pickle
 import sys
 from collections import defaultdict
@@ -24,11 +25,13 @@ from pathlib import Path
 
 import yaml
 
+from ..log import add_log_args, setup_logging
 from .threejs_render import render_highlight, render_paths
 
 HERE = Path(__file__).resolve().parent          # src/vuse_xr/cap3d
 ROOT = HERE.parents[2]                           # Repo-Root
 VIEW_FILES = [f"{i:05}.png" for i in range(20, 28)]  # 8 Views, Namensschema von Cap3D/DiffuRank
+log = logging.getLogger("vuse_xr.cap3d.render")  # fester Name: bei python -m wäre __name__ == "__main__"
 
 
 def load_cfg(path: Path) -> dict:
@@ -76,7 +79,7 @@ def collect_part(cfg: dict) -> list[Path]:
     paths = [p if p.is_absolute() else (ROOT / p) for p in paths]
     missing = [p for p in paths if not p.exists()]
     for p in missing:
-        print(f"[warn] Teil-Datei fehlt: {p}")
+        log.warning("Teil-Datei fehlt: %s", p)
     return [p for p in paths if p.exists()]
 
 
@@ -102,7 +105,9 @@ def main() -> None:
     ap.add_argument("--only", help="nur IDs/Assets, die diesen Text enthalten")
     ap.add_argument("--limit", type=int, help="höchstens N IDs rendern (zum Testen)")
     ap.add_argument("--force", action="store_true", help="auch bereits gerenderte IDs neu rendern")
+    add_log_args(ap)
     args = ap.parse_args()
+    setup_logging(args.verbose, args.quiet)
 
     cfg = load_cfg(Path(args.config))
     out_root = render_root(cfg, args.mode)
@@ -124,7 +129,7 @@ def main() -> None:
         todo = [p for p in paths if keep(rid(p))][: args.limit]
         expected = [rid(p) for p in todo]
         skipped = len([p for p in paths if (not args.only or args.only in rid(p))]) - len(todo)
-        print(f"[render] Modus {args.mode}: {len(todo)} zu rendern, {skipped} übersprungen/gefiltert")
+        log.info("Modus %s: %d zu rendern, %d übersprungen/gefiltert", args.mode, len(todo), skipped)
         if not todo:
             return
         render_paths(todo, out_root, cfg, args.mode)
@@ -141,15 +146,15 @@ def main() -> None:
             if parts:
                 job_list.append({"asset": asset, "parts": parts})
                 expected += [p["part_id"] for p in parts]
-        print(f"[render] Modus highlight: {len(expected)} Teile in {len(job_list)} Asset(s)")
+        log.info("Modus highlight: %d Teile in %d Asset(s)", len(expected), len(job_list))
         if not job_list:
             return
         render_highlight(job_list, out_root, cfg)
 
     missing = [i for i in expected if not is_done(out_root, i)]
-    print(f"[render] {len(expected) - len(missing)}/{len(expected)} vollständig (8 Views)")
+    log.info("%d/%d vollständig (8 Views)", len(expected) - len(missing), len(expected))
     if missing:
-        print("[render] unvollständig: " + ", ".join(missing[:20]) + (" …" if len(missing) > 20 else ""))
+        log.error("unvollständig: %s%s", ", ".join(missing[:20]), " …" if len(missing) > 20 else "")
         sys.exit(1)
 
 
