@@ -54,7 +54,8 @@ und `object_paths.pkl`. Dateinamen ohne Punkt (die Render-ID endet am ersten Pun
 
 ```bash
 uv run python -m vuse_xr.cap3d.split_nodes          # alle Assets, dauert wenige Sekunden
-uv run python -m vuse_xr.cap3d.split_nodes --force --limit 1  # nur ein Asset, erzwingt Überschreiben
+uv run python -m vuse_xr.cap3d.split_nodes --limit 1 --force  # nur ein Asset, erzwingt Überschreiben
+uv run python -m vuse_xr.cap3d.split_nodes --only centrifuge   # nur Assets mit diesem Namensteil
 ```
 Teile (`split.level`): `mesh` = Knoten mit eigenem Mesh, `group` = Baugruppen (z. B. `Lid_Assembly`), `all` = beides.
 Hüllen mit nur einem Mesh darunter werden als `aliases` beim Mesh vermerkt, nicht doppelt exportiert.

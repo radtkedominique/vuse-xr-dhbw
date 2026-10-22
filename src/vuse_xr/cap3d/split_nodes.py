@@ -2,6 +2,7 @@
 
     uv run python -m vuse_xr.cap3d.split_nodes                 # alle Assets
     uv run python -m vuse_xr.cap3d.split_nodes --only centrifuge
+    uv run python -m vuse_xr.cap3d.split_nodes --limit 1 --force   # nur das erste Asset, neu schreiben
     uv run python -m vuse_xr.cap3d.split_nodes --level mesh    # nur Knoten mit eigenem Mesh
 
 Was ist ein "Teil"?
@@ -163,6 +164,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=str(ROOT / "configs" / "cap3d.yaml"))
     ap.add_argument("--only", help="nur Assets, deren Name diesen Text enthält")
+    ap.add_argument("--limit", type=int, help="nur die ersten N Assets (alphabetisch, zum Testen)")
     ap.add_argument("--level", choices=["mesh", "group", "all"], help="überschreibt split.level aus der Config")
     ap.add_argument("--force", action="store_true", help="bereits exportierte Teile neu schreiben")
     args = ap.parse_args()
@@ -176,10 +178,12 @@ def main() -> None:
     assets = sorted(Path(p) for p in glob.glob(str(ROOT / cfg["render"]["asset_glob"])))
     if args.only:
         assets = [a for a in assets if args.only in a.stem]
+    if args.limit is not None:
+        assets = assets[: args.limit]
     if not assets:
         sys.exit("Keine Assets gefunden.")
 
-    # bestehendes Mapping behalten, nur die bearbeiteten Assets ersetzen (für --only)
+    # bestehendes Mapping behalten, nur die bearbeiteten Assets ersetzen (für --only/--limit)
     mapping = json.loads(map_path.read_text()) if map_path.exists() else {}
     done_assets = {str(a.relative_to(ROOT)) for a in assets}
     mapping = {k: v for k, v in mapping.items() if v["asset"] not in done_assets}
