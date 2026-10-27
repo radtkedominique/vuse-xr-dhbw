@@ -1,4 +1,4 @@
-"""Logging-Setup für die CLI-Einstiegspunkte (render, split_nodes).
+"""Logging-Setup für die CLI-Einstiegspunkte (split_nodes, render, caption).
 
 Module loggen nur über logging.getLogger("vuse_xr...."); Handler und Level werden einmal pro Prozess hier gesetzt.
 Ausgabe auf stderr, z. B.:  12:03:41 INFO    [render] Modus asset: 3 zu rendern, 0 übersprungen/gefiltert
