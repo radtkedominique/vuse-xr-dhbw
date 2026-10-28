@@ -10,11 +10,12 @@ uv run <script>  # Skript in der venv ausführen
 
 ## Struktur
 ```
-configs/         Konfigurationen (z. B. cap3d.yaml)
+configs/         Konfigurationen: cap3d.yaml (Originalnamen), cap3d_uuid.yaml (UUID-Testset)
 data/            lokal, nicht im Git
   raw/           Original-Assets (3d_assets.zip entpacken)
     3d_assets_uuid/  Testset mit UUID-Knotennamen + ground_truth.csv (Pipeline 4a)
   interim/       Zwischenergebnisse (Renderings)
+    uuid/          dasselbe für das UUID-Testset (cap3d_uuid.yaml)
   processed/     Ergebnisse (Captions, Metadaten)
 docs/research/   Recherche-Notizen (z. B. Cap3D)
 notebooks/       Exploration
@@ -76,3 +77,16 @@ Entfernt werden: Knotennamen (auch Wurzel), Mesh-Namen, alle `extras`. Materialn
 Nur der JSON-Chunk wird geändert, der BIN-Chunk wird 1:1 übernommen (Geometrie garantiert identisch).
 UUIDs sind deterministisch (`uuid5` aus Asset + Knotenpfad). Den Namespace `NS` im Skript nie ändern, sonst passen alte Ergebnisse nicht mehr zur Ground Truth.
 `ground_truth.csv`: `uuid, asset, node, path, kind (mesh|group|root), n_meshes, parent_uuid`. `group` mit `n_meshes = 1` = Hülle (in Pipeline 1 ein Alias).
+
+### Pipeline 1–3 auf dem Testset laufen lassen
+
+Für die Evaluation (Pipeline 4b) laufen Pipeline 1–3 auf `3d_assets_uuid` statt auf den Originalen. Dafür gibt es `configs/cap3d_uuid.yaml`: gleiche Einstellungen wie `cap3d.yaml`, aber eigener Input und eigene Output-Ordner (`data/interim/uuid/…`, `data/processed/uuid/…`). So mischen sich Teile mit Originalnamen und UUID-Teile nicht.
+
+```bash
+uv run python -m vuse_xr.cap3d.split_nodes --config configs/cap3d_uuid.yaml
+uv run python -m vuse_xr.cap3d.render --mode part --config configs/cap3d_uuid.yaml --limit 1
+uv run python -m vuse_xr.cap3d.render --mode part --config configs/cap3d_uuid.yaml
+```
+`--config` bei jedem Aufruf mitgeben, sonst wird `cap3d.yaml` genommen (Originalnamen).
+Änderungen an Render-Einstellungen in `cap3d.yaml` auch in `cap3d_uuid.yaml` nachziehen.
+Verknüpfung zur Ground Truth: `part_id` → `uid_mapping[part_id]["node"]` (UUID) → `ground_truth.csv.uuid` → `node` (echter Name).
