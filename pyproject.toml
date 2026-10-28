@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.5.4",
+    "pathlib>=1.0.1",
     "pillow>=13.0.0",
     "playwright>=1.48",
     "pyyaml>=6.0.3",
