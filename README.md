@@ -13,15 +13,31 @@ uv run <script>  # Skript in der venv ausführen
 configs/         Konfigurationen (z. B. cap3d.yaml)
 data/            lokal, nicht im Git
   raw/           Original-Assets (3d_assets.zip entpacken)
+    3d_assets_uuid/  Testset mit UUID-Knotennamen + ground_truth.csv (Pipeline 4a)
   interim/       Zwischenergebnisse (Renderings)
   processed/     Ergebnisse (Captions, Metadaten)
 docs/research/   Recherche-Notizen (z. B. Cap3D)
 notebooks/       Exploration
-scripts/         Einstiegspunkte
+scripts/         Einstiegspunkte (u. a. make_uuid_testset.py)
 src/vuse_xr/     Python-Package
   cap3d/         Cap3D-Pipeline: render -> caption -> summarize
 tests/
 ```
+
+## Pipeline 1: Assets in Teile zerlegen (`vuse_xr.cap3d.split_nodes`)
+
+```bash
+uv run python -m vuse_xr.cap3d.split_nodes          # alle Assets, dauert wenige Sekunden
+uv run python -m vuse_xr.cap3d.split_nodes --limit 1 --force  # nur ein Asset, erzwingt Überschreiben
+uv run python -m vuse_xr.cap3d.split_nodes --only centrifuge   # nur Assets mit diesem Namensteil
+```
+Teile (`split.level`): `mesh` = Knoten mit eigenem Mesh, `group` = Baugruppen (z. B. `Lid_Assembly`), `all` = beides.
+Hüllen mit nur einem Mesh darunter werden als `aliases` beim Mesh vermerkt, nicht doppelt exportiert.
+Output: `data/interim/nodes/<asset>__<knoten>.glb` (Weltkoordinaten, Materialien erhalten), `object_paths.pkl`, `uid_mapping.json`.
+
+**Pipeline 1 muss liefern:** `data/interim/uid_mapping.json` als
+`{"<asset>__<knoten>": {"asset": "data/raw/3d_assets/x.glb", "node": "<originaler Knotenname>", "file": "data/interim/nodes/<asset>__<knoten>.glb"}}`
+und `object_paths.pkl`. Dateinamen ohne Punkt (die Render-ID endet am ersten Punkt).
 
 ## Pipeline 2: Rendern mit three.js (`vuse_xr.cap3d.render`)
 
@@ -47,17 +63,16 @@ Beim Start steht im Log, welche GPU WebGL nutzt. Bei `SwiftShader` läuft es ohn
 Licht und Materialien sind an das frühere Blender-Backend (Cycles 3.4) angeglichen: `energy: blender` (Glanz wird addiert), `ao: true` (Spalten/Innenräume verschattet, Screen-Space-AO).
 Das Blender-Backend wurde entfernt; die Vergleichsbilder Blender vs. three.js liegen lokal in `data/interim/renders_compare/`.
 
-**Pipeline 1 muss liefern:** `data/interim/uid_mapping.json` als
-`{"<asset>__<knoten>": {"asset": "data/raw/3d_assets/x.glb", "node": "<originaler Knotenname>", "file": "data/interim/nodes/<asset>__<knoten>.glb"}}`
-und `object_paths.pkl`. Dateinamen ohne Punkt (die Render-ID endet am ersten Punkt).
+## Pipeline 4a: Testset mit UUID-Knotennamen (`scripts/make_uuid_testset.py`)
 
-## Pipeline 1: Assets in Teile zerlegen (`vuse_xr.cap3d.split_nodes`)
+Kopiert alle Assets aus `data/raw/3d_assets/` nach `data/raw/3d_assets_uuid/` und ersetzt jeden Knotennamen durch eine UUID. Die Originalnamen landen in `ground_truth.csv` und dienen Pipeline 4 als Ground Truth.
 
 ```bash
-uv run python -m vuse_xr.cap3d.split_nodes          # alle Assets, dauert wenige Sekunden
-uv run python -m vuse_xr.cap3d.split_nodes --limit 1 --force  # nur ein Asset, erzwingt Überschreiben
-uv run python -m vuse_xr.cap3d.split_nodes --only centrifuge   # nur Assets mit diesem Namensteil
+uv run python scripts/make_uuid_testset.py           # Testset erzeugen + prüfen
+uv run python scripts/make_uuid_testset.py --check   # nur prüfen
 ```
-Teile (`split.level`): `mesh` = Knoten mit eigenem Mesh, `group` = Baugruppen (z. B. `Lid_Assembly`), `all` = beides.
-Hüllen mit nur einem Mesh darunter werden als `aliases` beim Mesh vermerkt, nicht doppelt exportiert.
-Output: `data/interim/nodes/<asset>__<knoten>.glb` (Weltkoordinaten, Materialien erhalten), `object_paths.pkl`, `uid_mapping.json`.
+Optionen: `--src`, `--dst`, `-v`/`-q`.
+Entfernt werden: Knotennamen (auch Wurzel), Mesh-Namen, alle `extras`. Materialnamen bleiben.
+Nur der JSON-Chunk wird geändert, der BIN-Chunk wird 1:1 übernommen (Geometrie garantiert identisch).
+UUIDs sind deterministisch (`uuid5` aus Asset + Knotenpfad). Den Namespace `NS` im Skript nie ändern, sonst passen alte Ergebnisse nicht mehr zur Ground Truth.
+`ground_truth.csv`: `uuid, asset, node, path, kind (mesh|group|root), n_meshes, parent_uuid`. `group` mit `n_meshes = 1` = Hülle (in Pipeline 1 ein Alias).
