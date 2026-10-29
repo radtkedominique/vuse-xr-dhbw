@@ -3,6 +3,7 @@
     uv run python -m vuse_xr.cap3d.caption --only torque_wrench        # alle Teile eines Assets
     uv run python -m vuse_xr.cap3d.caption --limit 3                    # erste 3 Teile (zum Testen)
     uv run python -m vuse_xr.cap3d.caption --backend ollama --model qwen2.5vl:7b --only torque_wrench
+    uv run python -m vuse_xr.cap3d.caption --variant noname --only torque_wrench   # andere Variante
 
 Input:
     Renders aus Pipeline 2 (render_root(cfg, mode)/Cap3D_imgs/<part_id>/00020.png … 00027.png)
@@ -13,10 +14,16 @@ Input:
 Das Modell sieht nur die Bilder und den Asset-Typ (z. B. "torque wrench") – nie die part_id oder den
 Knotennamen, sonst könnte es die Lösung ablesen.
 
+Varianten (caption.variants): jede Variante überschreibt einzelne caption-Einstellungen, z. B.
+    baseline: {input_views: part+highlight, asset_name: true}
+    noname:   {input_views: part+highlight, asset_name: false}
+Auswahl mit --variant, sonst caption.variant. Prompt und Bilder baut build_input().
+
 Output:
-    <paths.output>/captions/<modell>/<part_id>.json   {"part_id", "caption": {name, type, function,
-                                              description, confidence}, "meta": {backend, model, input_views, …}}
-Ein Ordner pro Modell, damit sich Ergebnisse verschiedener Modelle vergleichen lassen.
+    <paths.output>/captions/<modell>/<variante>/<part_id>.json
+        {"part_id", "caption": {name, type, function, description, confidence},
+         "meta": {backend, model, variant, variant_cfg, input_views, prompt, …}}
+Ein Ordner pro Modell und Variante, damit sich Ergebnisse vergleichen lassen.
 Bereits beschriebene Teile werden übersprungen (--force beschreibt neu).
 
 Backends (caption.backend):
@@ -67,7 +74,7 @@ IMAGE_TEXT = {
     "asset": "8 views of the whole {asset}",
 }
 
-PROMPT = """You see renders of one part of a 3D model of a {asset}.
+PROMPT = """You see renders of one part of a 3D model of {a_asset}.
 {images}
 Identify the part as an engineer would name it in the assembly. Use the highlight to judge where the part sits
 and what it does. If several identical-looking parts exist, describe this one and lower the confidence.
@@ -88,6 +95,40 @@ def load_env(path: Path) -> None:
 def asset_label(asset_path: str) -> str:
     """data/raw/3d_assets/04_torque_wrench.glb -> 'torque wrench'"""
     return re.sub(r"^\d+_", "", Path(asset_path).stem).replace("_", " ")
+
+
+def safe_name(x: str) -> str:
+    """Für Ordnernamen: qwen2.5vl:7b -> qwen2.5vl_7b"""
+    return re.sub(r"[^\w.-]", "_", x)
+
+
+def asset_ref(entry: dict, cc: dict) -> str:
+    """Wie das Asset im Prompt heißt, gesteuert über caption.asset_name:
+    true -> Asset-Typ aus dem Dateinamen ('torque wrench'), false -> neutral ('object'),
+    """
+    mode = cc.get("asset_name", True)
+    if mode is True:
+        return asset_label(entry["asset"])
+    if mode is False:
+        return "object"
+    #if mode == "predicted":
+        raise NotImplementedError("asset_name: predicted kommt mit Pipeline 3e")
+    raise ValueError(f"caption.asset_name: unbekannter Wert {mode!r} (true | false | predicted)")
+
+
+def build_input(part_id: str, entry: dict, cc: dict, roots: dict[str, Path]) -> tuple[str, list[bytes]]:
+    """Prompt und Bilder für ein Teil. Jede Variante (caption.variants) ist ein Baustein hierin.
+
+    cc: aufgelöste caption-Einstellungen (Defaults + Variante), roots: Render-Ordner je Modus.
+    Die part_id selbst geht nie in den Prompt (enthält den Knotennamen)."""
+    asset = asset_ref(entry, cc)
+    a_asset = ("an " if asset[0] in "aeiou" else "a ") + asset
+    images, lines = [], []
+    for n, m in enumerate(cc["input_views"].split("+"), 1):
+        render_id = part_id if m != "asset" else Path(entry["asset"]).stem
+        images.append(grid_png(roots[m] / "Cap3D_imgs" / render_id, cc.get("grid_tile", 256)))
+        lines.append(f"Image {n}: " + IMAGE_TEXT[m].format(asset=asset) + ".")
+    return PROMPT.format(a_asset=a_asset, images="\n".join(lines)), images
 
 
 def grid_png(view_dir: Path, tile: int) -> bytes:
@@ -148,7 +189,6 @@ BACKENDS = {"gemini": call_gemini, "ollama": call_ollama}
 class QuotaExceeded(RuntimeError):
     """Tageslimit erreicht (z. B. Gemini-Gratis-Tarif) – weitere Versuche heute zwecklos."""
 
-
 def call_with_retry(backend: str, prompt: str, images: list[bytes], cc: dict) -> tuple[dict, dict]:
     retries = cc.get("retries", 5)
     for attempt in range(retries + 1):
@@ -180,6 +220,7 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="auch bereits beschriebene Teile neu beschreiben")
     ap.add_argument("--backend", choices=sorted(BACKENDS), help="überschreibt caption.backend")
     ap.add_argument("--model", help="überschreibt caption.model")
+    ap.add_argument("--variant", help="Variante aus caption.variants (Standard: caption.variant)")
     add_log_args(ap)
     args = ap.parse_args()
     setup_logging(args.verbose, args.quiet)
@@ -187,6 +228,15 @@ def main() -> None:
 
     cfg = load_cfg(Path(args.config))
     cc = dict(cfg["caption"])
+    variants = cc.pop("variants", None) or {}
+    default_variant = cc.pop("variant", None)
+    variant = args.variant or default_variant
+    if not variants:
+        sys.exit(f"caption.variants fehlt in {args.config}.")
+    if variant not in variants:
+        sys.exit(f"Variante {variant!r} unbekannt – vorhanden: {', '.join(variants)}")
+    variant_cfg = dict(variants[variant] or {})
+    cc.update(variant_cfg)  # Variante überschreibt die Defaults
     cc["backend"] = args.backend or cc["backend"]
     cc["model"] = args.model or cc["model"]
     if not cc["model"]:
@@ -198,7 +248,7 @@ def main() -> None:
         sys.exit(f"{mp} fehlt – erst Pipeline 1 (split_nodes.py) laufen lassen.")
     mapping = json.loads(mp.read_text())
 
-    out_dir = ROOT / cfg["paths"]["output"] / "captions" / re.sub(r"[^\w.-]", "_", cc["model"])  # qwen2.5vl:7b -> qwen2.5vl_7b
+    out_dir = ROOT / cfg["paths"]["output"] / "captions" / safe_name(cc["model"]) / safe_name(variant)
     out_dir.mkdir(parents=True, exist_ok=True)
     roots = {m: render_root(cfg, m) for m in modes}
 
@@ -216,18 +266,12 @@ def main() -> None:
     if missing:
         log.warning("%d Teile ohne vollständige Renders (%s) übersprungen, z. B. %s",
                     len(missing), cc["input_views"], missing[0])
-    log.info("Backend %s, Modell %s, Views %s: %d zu beschreiben", cc["backend"], cc["model"], cc["input_views"], len(todo))
+    log.info("Backend %s, Modell %s, Variante %s (Views %s): %d zu beschreiben",
+             cc["backend"], cc["model"], variant, cc["input_views"], len(todo))
 
     failed = []
     for i, part_id in enumerate(todo, 1):
-        entry = mapping[part_id]
-        asset = asset_label(entry["asset"])
-        images, lines = [], []
-        for n, m in enumerate(modes, 1):
-            render_id = part_id if m != "asset" else Path(entry["asset"]).stem
-            images.append(grid_png(roots[m] / "Cap3D_imgs" / render_id, cc.get("grid_tile", 256)))
-            lines.append(f"Image {n}: " + IMAGE_TEXT[m].format(asset=asset) + ".")
-        prompt = PROMPT.format(asset=asset, images="\n".join(lines))
+        prompt, images = build_input(part_id, mapping[part_id], cc, roots)
 
         t = time.time()
         try:
@@ -244,8 +288,9 @@ def main() -> None:
         result = {
             "part_id": part_id,
             "caption": caption,
-            "meta": {"backend": cc["backend"], "model": cc["model"], "input_views": cc["input_views"],
-                     "seconds": secs, "tokens": usage, "created": datetime.now(timezone.utc).isoformat(timespec="seconds")},
+            "meta": {"backend": cc["backend"], "model": cc["model"], "variant": variant, "variant_cfg": variant_cfg,
+                     "input_views": cc["input_views"], "prompt": prompt, "seconds": secs, "tokens": usage,
+                     "created": datetime.now(timezone.utc).isoformat(timespec="seconds")},
         }
         (out_dir / f"{part_id}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         log.info("%d/%d %s -> %s (%.2f) in %.1f s", i, len(todo), part_id, caption.get("name"),
