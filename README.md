@@ -18,6 +18,7 @@ data/            lokal, nicht im Git
     uuid/          dasselbe für das UUID-Testset (cap3d_uuid.yaml)
   processed/     Ergebnisse (Captions, Metadaten)
 docs/research/   Recherche-Notizen (z. B. Cap3D)
+docs/pipeline3.md  Pipeline 3: Vorversuche, Modellvergleich, Kosten
 notebooks/       Exploration
 scripts/         Einstiegspunkte (u. a. make_uuid_testset.py)
 src/vuse_xr/     Python-Package
@@ -63,6 +64,36 @@ Pipeline 3 holt den Ordner über `render_root(cfg, mode)` aus `vuse_xr.cap3d.ren
 Beim Start steht im Log, welche GPU WebGL nutzt. Bei `SwiftShader` läuft es ohne GPU (langsamer); dann `render.threejs.headless: false` testen.
 Licht und Materialien sind an das frühere Blender-Backend (Cycles 3.4) angeglichen: `energy: blender` (Glanz wird addiert), `ao: true` (Spalten/Innenräume verschattet, Screen-Space-AO).
 Das Blender-Backend wurde entfernt; die Vergleichsbilder Blender vs. three.js liegen lokal in `data/interim/renders_compare/`.
+
+## Pipeline 3: Teile beschreiben (`vuse_xr.cap3d.caption`)
+
+Ein Vision-Modell bekommt pro Teil die 8 Views als Rasterbild (Teil isoliert + Teil im Gesamtmodell hervorgehoben)
+und liefert JSON mit `name`, `type`, `function`, `description`, `confidence`. Das Modell sieht nur Bilder und den
+Asset-Typ, nie den Knotennamen. Vorversuche, Modellvergleich und Kosten: [docs/pipeline3.md](docs/pipeline3.md).
+
+**Einmalig (Gemini, Standard)**
+```bash
+cp .env.example .env    # dann GEMINI_API_KEY eintragen (kostenlos: aistudio.google.com -> "Get API key")
+```
+`.env` steht in `.gitignore` – den Key nie committen.
+
+**Optional lokal (Ollama)**
+```bash
+brew install ollama && brew services start ollama
+ollama pull qwen2.5vl:7b   # ~6 GB
+```
+
+**Beschreiben** (braucht Pipeline 1 und Pipeline 2 `--mode part` + `--mode highlight`)
+```bash
+uv run python -m vuse_xr.cap3d.caption --only torque_wrench --limit 2       # erst testen
+uv run python -m vuse_xr.cap3d.caption                                      # alle Teile mit Renders
+uv run python -m vuse_xr.cap3d.caption --backend ollama --model qwen2.5vl:7b # lokal
+```
+Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `-v`/`-q`. Fertige Teile werden übersprungen;
+bei Überlastung (HTTP 503) wird automatisch neu versucht. Beim Tageslimit (Gemini-Gratis-Tarif: 20 Anfragen pro Tag
+und Modell) bricht der Lauf ab – am nächsten Tag einfach neu starten.
+Einstellungen in `configs/cap3d.yaml` unter `caption:` (Backend, Modell, `input_views`, Rastergröße).
+Output: `data/processed/cap3d/captions/<modell>/<part_id>.json` – ein Ordner pro Modell, damit man vergleichen kann.
 
 ## Pipeline 4a: Testset mit UUID-Knotennamen (`scripts/make_uuid_testset.py`)
 
