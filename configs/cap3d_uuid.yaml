@@ -34,9 +34,22 @@ render:
     energy: blender    # blender = Glanz addiert wie Cycles/Principled v1 (heller) | three = energieerhaltend wie im VUSE-Hub
     colorspace: auto   # auto = wie Blender (asset/part linear wie DiffuRank-"Raw", highlight sRGB) | linear | srgb
 
-caption:
-  model: null          # VLM, siehe docs/research/cap3d.md
-  input_views: part    # part | part+asset | part+highlight
+caption:              # Pipeline 3, Vorversuche und Begründungen: docs/pipeline3.md
+  backend: gemini      # gemini (Key in .env, siehe .env.example) | ollama (lokal)
+  model: gemini-3.8-flash  # bestes Modell im Gemini-Gratis-Tarif; lokal z. B. qwen2.5vl:7b
+  input_views: part+highlight  # Views aus asset | part | highlight | group, mit + kombiniert – je View ein Rasterbild der 8 Views
+  grid_tile: 256       # Kantenlänge einer View im Raster (4×2 -> 1024×512 px)
+  retries: 5           # bei Überlastung/Rate-Limit (HTTP 429/503) mit wachsender Wartezeit neu versuchen
+  timeout: 120         # Sekunden pro Anfrage
+  ollama_url: http://localhost:11434
+  ollama_num_ctx: 12288  # Ollama-Standard (4096) reicht nicht für Bilder
+  hierarchy: false      # Pipeline 3d: Struktur + Geometrie als Text (structure.py)
+  variant: baseline       # Standard, wenn kein --variant
+  variants:
+    baseline: { input_views: part+highlight, asset_name: true }
+    noname: { input_views: part+highlight, asset_name: false }
+    full: { input_views: asset+part+highlight+group, asset_name: true }
+    hier: { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
 
 summarize:
   model: null          # LLM, siehe docs/research/cap3d.md

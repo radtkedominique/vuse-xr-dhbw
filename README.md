@@ -23,7 +23,7 @@ notebooks/       Exploration
 scripts/         Einstiegspunkte (u. a. make_uuid_testset.py)
 src/vuse_xr/     Python-Package
   cap3d/         Cap3D-Pipeline: render -> caption -> summarize
-tests/
+tests/           pytest: uv run pytest
 ```
 
 ## Pipeline 1: Assets in Teile zerlegen (`vuse_xr.cap3d.split_nodes`)
@@ -67,8 +67,8 @@ Das Blender-Backend wurde entfernt; die Vergleichsbilder Blender vs. three.js li
 
 ## Pipeline 3: Teile beschreiben (`vuse_xr.cap3d.caption`)
 
-Ein Vision-Modell bekommt pro Teil die 8 Views als Rasterbild (Teil isoliert + Teil im Gesamtmodell hervorgehoben)
-und liefert JSON mit `name`, `type`, `function`, `description`, `confidence`. Das Modell sieht nur Bilder und den
+Ein Vision-Modell bekommt pro Teil die 8 Views als Rasterbild (Standard: Teil isoliert + Teil im Gesamtmodell
+hervorgehoben, weitere Views über Varianten) und liefert JSON mit `name`, `type`, `function`, `description`, `confidence`. Das Modell sieht nur Bilder und den
 Asset-Typ, nie den Knotennamen. Vorversuche, Modellvergleich und Kosten: [docs/pipeline3.md](docs/pipeline3.md).
 
 **Einmalig (Gemini, Standard)**
@@ -83,17 +83,56 @@ brew install ollama && brew services start ollama
 ollama pull qwen2.5vl:7b   # ~6 GB
 ```
 
-**Beschreiben** (braucht Pipeline 1 und Pipeline 2 `--mode part` + `--mode highlight`)
+**Beschreiben** (braucht Pipeline 1 und Pipeline 2 `--mode part` + `--mode highlight`, für Variante `full` zusätzlich `--mode asset`)
 ```bash
 uv run python -m vuse_xr.cap3d.caption --only torque_wrench --limit 2       # erst testen
 uv run python -m vuse_xr.cap3d.caption                                      # alle Teile mit Renders
 uv run python -m vuse_xr.cap3d.caption --backend ollama --model qwen2.5vl:7b # lokal
+uv run python -m vuse_xr.cap3d.caption --variant noname --only torque_wrench # andere Variante
+uv run python -m vuse_xr.cap3d.caption --variant full --only magnetic_stirrer --limit 3  # alle 4 Views
 ```
-Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `-v`/`-q`. Fertige Teile werden übersprungen;
+Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `--variant`, `-v`/`-q`. Fertige Teile werden übersprungen;
 bei Überlastung (HTTP 503) wird automatisch neu versucht. Beim Tageslimit (Gemini-Gratis-Tarif: 20 Anfragen pro Tag
 und Modell) bricht der Lauf ab – am nächsten Tag einfach neu starten.
 Einstellungen in `configs/cap3d.yaml` unter `caption:` (Backend, Modell, `input_views`, Rastergröße).
-Output: `data/processed/cap3d/captions/<modell>/<part_id>.json` – ein Ordner pro Modell, damit man vergleichen kann.
+
+**Varianten:** Verschiedene Herangehensweisen stehen als Einträge unter `caption.variants`. Jede Variante überschreibt
+nur einzelne `caption:`-Einstellungen; ohne `--variant` gilt `caption.variant` (Standard `baseline`).
+```yaml
+variants:
+  baseline: { input_views: part+highlight, asset_name: true }   # Asset-Typ im Prompt ("torque wrench")
+  noname:   { input_views: part+highlight, asset_name: false }  # neutral ("object")
+  full:     { input_views: asset+part+highlight+group, asset_name: true }  # Pipeline 3c
+  hier:     { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
+```
+Views (`input_views`, mit `+` kombiniert, je View ein Rasterbild):
+
+| View | Bild | Render aus Pipeline 2 |
+|---|---|---|
+| `asset` | ganzes Objekt | `asset/<asset>` |
+| `part` | Teil isoliert | `part/<part_id>` |
+| `highlight` | Teil orange im transparenten Gesamtmodell | `highlight/<part_id>` |
+| `group` | Baugruppe, in der das Teil steckt (Teil nicht markiert) | `part/<group_id>` – kein eigener Render-Modus |
+
+Die Baugruppe sucht `group_of()`: nächster Knoten im `path` (von unten nach oben), der selbst als Teil im Mapping steht.
+Hüllen werden dabei übersprungen. Teile ohne Baugruppe darüber (53 von 1.114) bekommen kein Gruppenbild, der Prompt
+nummeriert die Bilder dann fortlaufend. Erster Test mit `full` (Qwen 7B): Das Modell beschreibt die Baugruppe statt
+des Teils – Details im Notion-Ticket „Pipeline 3c“.
+
+**Struktur als Text (Pipeline 3d, `hierarchy: true`):** `structure.py` hängt pro Teil Fakten aus dem Szenengraph an den
+Prompt – Ebene im Baum, Anzahl Teile in der Baugruppe, davon maßgleiche (sortierte Maße, 2 % Toleranz, 90° gedrehte
+Kopien zählen mit), relative Größe, Rang unter den Geschwistern, Form (elongated | flat | compact). Nur Zahlen, keine
+Knotennamen. Eltern und Geschwister über `group_of()`, Hüllen werden übersprungen. Block ansehen ohne API-Aufruf:
+```bash
+uv run python -m vuse_xr.cap3d.structure --config configs/cap3d_uuid.yaml --only magnetic_stirrer --limit 3
+```
+Im JSON steht der Block zusätzlich unter `meta.structure`. Auswertung auf dem UUID-Set (`baseline` vs. `hier`).
+
+Prompt und Bilder baut `build_input()` in `caption.py` – neue Ideen kommen dort als Baustein dazu.
+Varianten immer in `cap3d.yaml` und `cap3d_uuid.yaml` gleich halten.
+
+Output: `data/processed/cap3d/captions/<modell>/<variante>/<part_id>.json` – ein Ordner pro Modell und Variante, damit
+man vergleichen kann. In `meta` stehen zusätzlich `variant`, `variant_cfg`, `group` (gezeigte Baugruppe oder `null`) und der komplette `prompt`.
 
 ## Pipeline 4a: Testset mit UUID-Knotennamen (`scripts/make_uuid_testset.py`)
 
@@ -117,6 +156,8 @@ Für die Evaluation (Pipeline 4b) laufen Pipeline 1–3 auf `3d_assets_uuid` sta
 uv run python -m vuse_xr.cap3d.split_nodes --config configs/cap3d_uuid.yaml
 uv run python -m vuse_xr.cap3d.render --mode part --config configs/cap3d_uuid.yaml --limit 1
 uv run python -m vuse_xr.cap3d.render --mode part --config configs/cap3d_uuid.yaml
+uv run python -m vuse_xr.cap3d.render --mode highlight --config configs/cap3d_uuid.yaml
+uv run python -m vuse_xr.cap3d.render --mode asset --config configs/cap3d_uuid.yaml   # nur für Variante full
 ```
 `--config` bei jedem Aufruf mitgeben, sonst wird `cap3d.yaml` genommen (Originalnamen).
 Änderungen an Render-Einstellungen in `cap3d.yaml` auch in `cap3d_uuid.yaml` nachziehen.
