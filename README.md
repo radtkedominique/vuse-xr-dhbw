@@ -88,12 +88,25 @@ ollama pull qwen2.5vl:7b   # ~6 GB
 uv run python -m vuse_xr.cap3d.caption --only torque_wrench --limit 2       # erst testen
 uv run python -m vuse_xr.cap3d.caption                                      # alle Teile mit Renders
 uv run python -m vuse_xr.cap3d.caption --backend ollama --model qwen2.5vl:7b # lokal
+uv run python -m vuse_xr.cap3d.caption --variant noname --only torque_wrench # andere Variante
 ```
-Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `-v`/`-q`. Fertige Teile werden übersprungen;
+Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `--variant`, `-v`/`-q`. Fertige Teile werden übersprungen;
 bei Überlastung (HTTP 503) wird automatisch neu versucht. Beim Tageslimit (Gemini-Gratis-Tarif: 20 Anfragen pro Tag
 und Modell) bricht der Lauf ab – am nächsten Tag einfach neu starten.
 Einstellungen in `configs/cap3d.yaml` unter `caption:` (Backend, Modell, `input_views`, Rastergröße).
-Output: `data/processed/cap3d/captions/<modell>/<part_id>.json` – ein Ordner pro Modell, damit man vergleichen kann.
+
+**Varianten:** Verschiedene Herangehensweisen stehen als Einträge unter `caption.variants`. Jede Variante überschreibt
+nur einzelne `caption:`-Einstellungen; ohne `--variant` gilt `caption.variant` (Standard `baseline`).
+```yaml
+variants:
+  baseline: { input_views: part+highlight, asset_name: true }   # Asset-Typ im Prompt ("torque wrench")
+  noname:   { input_views: part+highlight, asset_name: false }  # neutral ("object")
+```
+Prompt und Bilder baut `build_input()` in `caption.py` – neue Ideen kommen dort als Baustein dazu.
+Varianten immer in `cap3d.yaml` und `cap3d_uuid.yaml` gleich halten.
+
+Output: `data/processed/cap3d/captions/<modell>/<variante>/<part_id>.json` – ein Ordner pro Modell und Variante, damit
+man vergleichen kann. In `meta` stehen zusätzlich `variant`, `variant_cfg` und der komplette `prompt`.
 
 ## Pipeline 4a: Testset mit UUID-Knotennamen (`scripts/make_uuid_testset.py`)
 
