@@ -17,7 +17,9 @@ Knotennamen, sonst könnte es die Lösung ablesen.
 Varianten (caption.variants): jede Variante überschreibt einzelne caption-Einstellungen, z. B.
     baseline: {input_views: part+highlight, asset_name: true}
     noname:   {input_views: part+highlight, asset_name: false}
-Auswahl mit --variant, sonst caption.variant. Prompt und Bilder baut build_input().
+    full:     {input_views: asset+part+highlight+group, asset_name: true}
+View group = part-Render der nächsten Baugruppe über dem Teil (group_of); Teile ohne Baugruppe bekommen
+kein Gruppenbild. Auswahl mit --variant, sonst caption.variant. Prompt und Bilder baut build_input().
 
 Output:
     <paths.output>/captions/<modell>/<variante>/<part_id>.json
@@ -72,7 +74,9 @@ IMAGE_TEXT = {
     "part": "8 views of the isolated part",
     "highlight": "the same 8 views of the whole {asset}, with the part highlighted in orange and the rest transparent",
     "asset": "8 views of the whole {asset}",
+    "group": "8 views of the sub-assembly of the {asset} that contains the part (part not highlighted)",
 }
+VIEW_RENDER = {"group": "part"}  # View -> Render-Modus aus Pipeline 2 (Rest: gleicher Name)
 
 PROMPT = """You see renders of one part of a 3D model of {a_asset}.
 {images}
@@ -116,18 +120,41 @@ def asset_ref(entry: dict, cc: dict) -> str:
     raise ValueError(f"caption.asset_name: unbekannter Wert {mode!r} (true | false | predicted)")
 
 
-def build_input(part_id: str, entry: dict, cc: dict, roots: dict[str, Path]) -> tuple[str, list[bytes]]:
+def group_of(entry: dict, mapping: dict) -> str | None:
+    """Nächste Baugruppe über dem Teil als part_id, sonst None.
+    Läuft den path von unten nach oben, weil der direkte Elternknoten oft nur eine Hülle (Alias) ist."""
+    stem = Path(entry["asset"]).stem
+    for node in reversed([n for n in entry["path"].split("/") if n]):
+        if f"{stem}__{node}" in mapping:
+            return f"{stem}__{node}"
+    return None
+
+
+def view_id(view: str, part_id: str, entry: dict, mapping: dict) -> str | None:
+    """Render-ID (Ordnername unter Cap3D_imgs) für einen View; None = View entfällt für dieses Teil."""
+    if view == "asset":
+        return Path(entry["asset"]).stem
+    if view == "group":
+        return group_of(entry, mapping)
+    return part_id
+
+
+def build_input(part_id: str, entry: dict, cc: dict, roots: dict[str, Path],
+                mapping: dict) -> tuple[str, list[bytes]]:
     """Prompt und Bilder für ein Teil. Jede Variante (caption.variants) ist ein Baustein hierin.
 
-    cc: aufgelöste caption-Einstellungen (Defaults + Variante), roots: Render-Ordner je Modus.
-    Die part_id selbst geht nie in den Prompt (enthält den Knotennamen)."""
+    cc: aufgelöste caption-Einstellungen (Defaults + Variante), roots: Render-Ordner je View,
+    mapping: uid_mapping.json (für die Baugruppe im View group).
+    Die part_id selbst geht nie in den Prompt (enthält den Knotennamen), ebenso wenig die group_id."""
     asset = asset_ref(entry, cc)
     a_asset = ("an " if asset[0] in "aeiou" else "a ") + asset
     images, lines = [], []
-    for n, m in enumerate(cc["input_views"].split("+"), 1):
-        render_id = part_id if m != "asset" else Path(entry["asset"]).stem
-        images.append(grid_png(roots[m] / "Cap3D_imgs" / render_id, cc.get("grid_tile", 256)))
-        lines.append(f"Image {n}: " + IMAGE_TEXT[m].format(asset=asset) + ".")
+    for m in cc["input_views"].split("+"):
+        vid = view_id(m, part_id, entry, mapping)
+        if vid is None:  # kein Elternknoten -> kein Gruppenbild
+            continue
+        images.append(grid_png(roots[m] / "Cap3D_imgs" / vid, cc.get("grid_tile", 256)))
+        lines.append(f"Image {len(images)}: " + IMAGE_TEXT[m].format(asset=asset) + ".")
     return PROMPT.format(a_asset=a_asset, images="\n".join(lines)), images
 
 
@@ -250,7 +277,7 @@ def main() -> None:
 
     out_dir = ROOT / cfg["paths"]["output"] / "captions" / safe_name(cc["model"]) / safe_name(variant)
     out_dir.mkdir(parents=True, exist_ok=True)
-    roots = {m: render_root(cfg, m) for m in modes}
+    roots = {m: render_root(cfg, VIEW_RENDER.get(m, m)) for m in modes}
 
     todo, missing = [], []
     for part_id in sorted(mapping):
@@ -258,7 +285,8 @@ def main() -> None:
             continue
         if not args.force and (out_dir / f"{part_id}.json").exists():
             continue
-        if not all(is_done(roots[m], part_id if m != "asset" else Path(mapping[part_id]["asset"]).stem) for m in modes):
+        ids = {m: view_id(m, part_id, mapping[part_id], mapping) for m in modes}
+        if not all(is_done(roots[m], i) for m, i in ids.items() if i is not None):
             missing.append(part_id)
             continue
         todo.append(part_id)
@@ -271,7 +299,7 @@ def main() -> None:
 
     failed = []
     for i, part_id in enumerate(todo, 1):
-        prompt, images = build_input(part_id, mapping[part_id], cc, roots)
+        prompt, images = build_input(part_id, mapping[part_id], cc, roots, mapping)
 
         t = time.time()
         try:
@@ -289,7 +317,8 @@ def main() -> None:
             "part_id": part_id,
             "caption": caption,
             "meta": {"backend": cc["backend"], "model": cc["model"], "variant": variant, "variant_cfg": variant_cfg,
-                     "input_views": cc["input_views"], "prompt": prompt, "seconds": secs, "tokens": usage,
+                     "input_views": cc["input_views"], "group": group_of(mapping[part_id], mapping),
+                     "prompt": prompt, "seconds": secs, "tokens": usage,
                      "created": datetime.now(timezone.utc).isoformat(timespec="seconds")},
         }
         (out_dir / f"{part_id}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
