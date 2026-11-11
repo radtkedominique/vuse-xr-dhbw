@@ -20,3 +20,8 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "vuse_xr"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

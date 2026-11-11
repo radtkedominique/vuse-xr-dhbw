@@ -42,11 +42,13 @@ caption:              # Pipeline 3, Vorversuche und Begründungen: docs/pipeline
   timeout: 120         # Sekunden pro Anfrage
   ollama_url: http://localhost:11434
   ollama_num_ctx: 12288  # Ollama-Standard (4096) reicht nicht für Bilder
+  hierarchy: false      # Pipeline 3d: Struktur + Geometrie als Text (structure.py)
   variant: baseline       # Standard, wenn kein --variant
   variants:
     baseline: { input_views: part+highlight, asset_name: true }
     noname: { input_views: part+highlight, asset_name: false }
     full: { input_views: asset+part+highlight+group, asset_name: true }  # Pipeline 3c
+    hier: { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
 
 summarize:
   model: null          # LLM, siehe docs/research/cap3d.md

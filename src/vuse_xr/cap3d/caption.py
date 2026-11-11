@@ -18,8 +18,10 @@ Varianten (caption.variants): jede Variante überschreibt einzelne caption-Einst
     baseline: {input_views: part+highlight, asset_name: true}
     noname:   {input_views: part+highlight, asset_name: false}
     full:     {input_views: asset+part+highlight+group, asset_name: true}
+    hier:     {input_views: part+highlight, asset_name: true, hierarchy: true}
 View group = part-Render der nächsten Baugruppe über dem Teil (group_of); Teile ohne Baugruppe bekommen
-kein Gruppenbild. Auswahl mit --variant, sonst caption.variant. Prompt und Bilder baut build_input().
+kein Gruppenbild. hierarchy: true hängt Struktur- und Geometriefakten als Text an (structure.describe,
+Pipeline 3d). Auswahl mit --variant, sonst caption.variant. Prompt und Bilder baut build_input().
 
 Output:
     <paths.output>/captions/<modell>/<variante>/<part_id>.json
@@ -52,6 +54,7 @@ from PIL import Image
 
 from ..log import add_log_args, setup_logging
 from .render import ROOT, VIEW_FILES, is_done, load_cfg, render_root
+from .structure import build_tree, describe, group_of
 
 log = logging.getLogger("vuse_xr.cap3d.caption")  # fester Name: bei python -m wäre __name__ == "__main__"
 
@@ -120,16 +123,6 @@ def asset_ref(entry: dict, cc: dict) -> str:
     raise ValueError(f"caption.asset_name: unbekannter Wert {mode!r} (true | false | predicted)")
 
 
-def group_of(entry: dict, mapping: dict) -> str | None:
-    """Nächste Baugruppe über dem Teil als part_id, sonst None.
-    Läuft den path von unten nach oben, weil der direkte Elternknoten oft nur eine Hülle (Alias) ist."""
-    stem = Path(entry["asset"]).stem
-    for node in reversed([n for n in entry["path"].split("/") if n]):
-        if f"{stem}__{node}" in mapping:
-            return f"{stem}__{node}"
-    return None
-
-
 def view_id(view: str, part_id: str, entry: dict, mapping: dict) -> str | None:
     """Render-ID (Ordnername unter Cap3D_imgs) für einen View; None = View entfällt für dieses Teil."""
     if view == "asset":
@@ -140,11 +133,12 @@ def view_id(view: str, part_id: str, entry: dict, mapping: dict) -> str | None:
 
 
 def build_input(part_id: str, entry: dict, cc: dict, roots: dict[str, Path],
-                mapping: dict) -> tuple[str, list[bytes]]:
+                mapping: dict, tree: dict | None = None) -> tuple[str, list[bytes]]:
     """Prompt und Bilder für ein Teil. Jede Variante (caption.variants) ist ein Baustein hierin.
 
     cc: aufgelöste caption-Einstellungen (Defaults + Variante), roots: Render-Ordner je View,
-    mapping: uid_mapping.json (für die Baugruppe im View group).
+    mapping: uid_mapping.json (für die Baugruppe im View group), tree: structure.build_tree(mapping),
+    nur nötig bei hierarchy: true.
     Die part_id selbst geht nie in den Prompt (enthält den Knotennamen), ebenso wenig die group_id."""
     asset = asset_ref(entry, cc)
     a_asset = ("an " if asset[0] in "aeiou" else "a ") + asset
@@ -155,6 +149,8 @@ def build_input(part_id: str, entry: dict, cc: dict, roots: dict[str, Path],
             continue
         images.append(grid_png(roots[m] / "Cap3D_imgs" / vid, cc.get("grid_tile", 256)))
         lines.append(f"Image {len(images)}: " + IMAGE_TEXT[m].format(asset=asset) + ".")
+    if cc.get("hierarchy"):  # Pipeline 3d: nur Zahlen, keine Knotennamen
+        lines += ["", describe(part_id, mapping, tree), "Use these structure facts as hints.", ""]
     return PROMPT.format(a_asset=a_asset, images="\n".join(lines)), images
 
 
@@ -274,6 +270,7 @@ def main() -> None:
     if not mp.exists():
         sys.exit(f"{mp} fehlt – erst Pipeline 1 (split_nodes.py) laufen lassen.")
     mapping = json.loads(mp.read_text())
+    tree = build_tree(mapping) if cc.get("hierarchy") else None
 
     out_dir = ROOT / cfg["paths"]["output"] / "captions" / safe_name(cc["model"]) / safe_name(variant)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -299,7 +296,7 @@ def main() -> None:
 
     failed = []
     for i, part_id in enumerate(todo, 1):
-        prompt, images = build_input(part_id, mapping[part_id], cc, roots, mapping)
+        prompt, images = build_input(part_id, mapping[part_id], cc, roots, mapping, tree)
 
         t = time.time()
         try:
@@ -318,6 +315,7 @@ def main() -> None:
             "caption": caption,
             "meta": {"backend": cc["backend"], "model": cc["model"], "variant": variant, "variant_cfg": variant_cfg,
                      "input_views": cc["input_views"], "group": group_of(mapping[part_id], mapping),
+                     "structure": describe(part_id, mapping, tree) if tree else None,
                      "prompt": prompt, "seconds": secs, "tokens": usage,
                      "created": datetime.now(timezone.utc).isoformat(timespec="seconds")},
         }

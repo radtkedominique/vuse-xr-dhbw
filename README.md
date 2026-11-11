@@ -23,7 +23,7 @@ notebooks/       Exploration
 scripts/         Einstiegspunkte (u. a. make_uuid_testset.py)
 src/vuse_xr/     Python-Package
   cap3d/         Cap3D-Pipeline: render -> caption -> summarize
-tests/
+tests/           pytest: uv run pytest
 ```
 
 ## Pipeline 1: Assets in Teile zerlegen (`vuse_xr.cap3d.split_nodes`)
@@ -103,6 +103,7 @@ variants:
   baseline: { input_views: part+highlight, asset_name: true }   # Asset-Typ im Prompt ("torque wrench")
   noname:   { input_views: part+highlight, asset_name: false }  # neutral ("object")
   full:     { input_views: asset+part+highlight+group, asset_name: true }  # Pipeline 3c
+  hier:     { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
 ```
 Views (`input_views`, mit `+` kombiniert, je View ein Rasterbild):
 
@@ -117,6 +118,15 @@ Die Baugruppe sucht `group_of()`: nächster Knoten im `path` (von unten nach obe
 Hüllen werden dabei übersprungen. Teile ohne Baugruppe darüber (53 von 1.114) bekommen kein Gruppenbild, der Prompt
 nummeriert die Bilder dann fortlaufend. Erster Test mit `full` (Qwen 7B): Das Modell beschreibt die Baugruppe statt
 des Teils – Details im Notion-Ticket „Pipeline 3c“.
+
+**Struktur als Text (Pipeline 3d, `hierarchy: true`):** `structure.py` hängt pro Teil Fakten aus dem Szenengraph an den
+Prompt – Ebene im Baum, Anzahl Teile in der Baugruppe, davon maßgleiche (sortierte Maße, 2 % Toleranz, 90° gedrehte
+Kopien zählen mit), relative Größe, Rang unter den Geschwistern, Form (elongated | flat | compact). Nur Zahlen, keine
+Knotennamen. Eltern und Geschwister über `group_of()`, Hüllen werden übersprungen. Block ansehen ohne API-Aufruf:
+```bash
+uv run python -m vuse_xr.cap3d.structure --config configs/cap3d_uuid.yaml --only magnetic_stirrer --limit 3
+```
+Im JSON steht der Block zusätzlich unter `meta.structure`. Auswertung auf dem UUID-Set (`baseline` vs. `hier`).
 
 Prompt und Bilder baut `build_input()` in `caption.py` – neue Ideen kommen dort als Baustein dazu.
 Varianten immer in `cap3d.yaml` und `cap3d_uuid.yaml` gleich halten.
