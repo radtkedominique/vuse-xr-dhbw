@@ -24,19 +24,19 @@ from pathlib import Path
 
 from ..log import add_log_args, setup_logging
 from .render import ROOT, load_cfg
+from .split_nodes import clean
 
 SAME_DIMS_TOL = 0.02  # Maße gelten als gleich bei Abweichung <= 2 % der längsten Kante
-
 
 def group_of(entry: dict, mapping: dict) -> str | None:
     """Nächste Baugruppe über dem Teil als part_id, sonst None.
     Läuft den path von unten nach oben, weil der direkte Elternknoten oft nur eine Hülle (Alias) ist."""
     stem = Path(entry["asset"]).stem
     for node in reversed([n for n in entry["path"].split("/") if n]):
-        if f"{stem}__{node}" in mapping:
-            return f"{stem}__{node}"
+        pid = f"{stem}__{clean(node)}"  # wie split_nodes.py die part_ids bildet
+        if pid in mapping:
+            return pid
     return None
-
 
 def parent_key(entry: dict, mapping: dict) -> str:
     """Baugruppe als part_id, oder 'ROOT:<asset>' für Teile ohne Baugruppe darüber."""

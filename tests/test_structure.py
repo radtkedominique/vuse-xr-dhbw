@@ -86,3 +86,11 @@ def test_describe_contains_no_names():
         text = describe(pid, MAPPING, TREE)
         names = {e["node"], *e["path"].split("/"), "Foot_2_Hull"} - {""}
         assert not any(n in text for n in names), (pid, text)
+
+def test_group_of_cleans_node_names():
+    m = {
+        "a__Assembly": {"asset": "x/a.glb", "path": "", "kind": "group"},
+        "a__Flange_-0_065": {"asset": "x/a.glb", "path": "Assembly", "kind": "group"},
+        "a__Bolt": {"asset": "x/a.glb", "path": "Assembly/Flange_-0.065", "kind": "mesh"},
+    }
+    assert group_of(m["a__Bolt"], m) == "a__Flange_-0_065"
