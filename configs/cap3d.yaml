@@ -43,12 +43,17 @@ caption:              # Pipeline 3, Vorversuche und Begründungen: docs/pipeline
   ollama_url: http://localhost:11434
   ollama_num_ctx: 12288  # Ollama-Standard (4096) reicht nicht für Bilder
   hierarchy: false      # Pipeline 3d: Struktur + Geometrie als Text (structure.py)
+  document: false       # Pipeline 3h: Zusatzdokument pro Asset als Text (documents.py)
+  documents_dir: data/raw/documents  # <asset>.pdf | .md | .txt, fehlt -> Teil läuft ohne
+  document_max_chars: 12000  # länger -> gekürzt (Warnung), RAG folgt; bei Erhöhung ollama_num_ctx mitziehen
   variant: baseline       # Standard, wenn kein --variant
   variants:
     baseline: { input_views: part+highlight, asset_name: true }
     noname: { input_views: part+highlight, asset_name: false }
     full: { input_views: asset+part+highlight+group, asset_name: true }  # Pipeline 3c
     hier: { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
+    doc: { input_views: part+highlight, asset_name: true, document: true }  # Pipeline 3h
+    hier_doc: { input_views: part+highlight, asset_name: true, hierarchy: true, document: true }  # Pipeline 3h
 
 summarize:
   model: null          # LLM, siehe docs/research/cap3d.md

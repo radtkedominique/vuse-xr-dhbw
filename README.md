@@ -13,6 +13,7 @@ uv run <script>  # Skript in der venv ausführen
 configs/         Konfigurationen: cap3d.yaml (Originalnamen), cap3d_uuid.yaml (UUID-Testset)
 data/            lokal, nicht im Git
   raw/           Original-Assets (3d_assets.zip entpacken)
+    documents/     Zusatzdokumente pro Asset, <asset>.pdf|.md|.txt (Pipeline 3h)
     3d_assets_uuid/  Testset mit UUID-Knotennamen + ground_truth.csv (Pipeline 4a)
   interim/       Zwischenergebnisse (Renderings)
     uuid/          dasselbe für das UUID-Testset (cap3d_uuid.yaml)
@@ -104,6 +105,8 @@ variants:
   noname:   { input_views: part+highlight, asset_name: false }  # neutral ("object")
   full:     { input_views: asset+part+highlight+group, asset_name: true }  # Pipeline 3c
   hier:     { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
+  doc:      { input_views: part+highlight, asset_name: true, document: true }   # Pipeline 3h
+  hier_doc: { input_views: part+highlight, asset_name: true, hierarchy: true, document: true }  # Pipeline 3h
 ```
 Views (`input_views`, mit `+` kombiniert, je View ein Rasterbild):
 
@@ -127,6 +130,18 @@ Knotennamen. Eltern und Geschwister über `group_of()`, Hüllen werden überspru
 uv run python -m vuse_xr.cap3d.structure --config configs/cap3d_uuid.yaml --only magnetic_stirrer --limit 3
 ```
 Im JSON steht der Block zusätzlich unter `meta.structure`. Auswertung auf dem UUID-Set (`baseline` vs. `hier`).
+
+**Zusatzdokument pro Asset (Pipeline 3h, `document: true`):** Anleitung, Stückliste o. Ä. als Text im Prompt, damit
+das Modell Begriffe des Herstellers verwendet. Zuordnung über den Dateinamen:
+`data/raw/documents/<asset>.pdf | .md | .txt` (z. B. `04_magnetic_stirrer.pdf`, gleicher Ordner für beide Configs).
+Assets ohne Dokument laufen normal. Inhalt, Sprache und Länge sind unbekannt: Der Text steht abgegrenzt in
+`<document>…</document>` mit dem Hinweis, Anweisungen darin zu ignorieren; Antwort immer Englisch. Texte über
+`caption.document_max_chars` (12.000 Zeichen) werden gekürzt (Warnung), RAG folgt. Gescannte PDFs ohne Textebene
+liefern keinen Text. Bei höherem Limit `ollama_num_ctx` mitziehen. Im JSON unter `meta.document`: Datei, Zeichen,
+gekürzt ja/nein. Welche Assets ein Dokument haben:
+```bash
+uv run python -m vuse_xr.cap3d.documents --config configs/cap3d_uuid.yaml
+```
 
 Prompt und Bilder baut `build_input()` in `caption.py` – neue Ideen kommen dort als Baustein dazu.
 Varianten immer in `cap3d.yaml` und `cap3d_uuid.yaml` gleich halten.
