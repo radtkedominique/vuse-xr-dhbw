@@ -47,6 +47,7 @@ caption:              # Pipeline 3, Vorversuche und Begründungen: docs/pipeline
   document: false       # Pipeline 3h: Zusatzdokument pro Asset als Text (documents.py)
   documents_dir: data/raw/documents  # <asset>.pdf | .md | .txt, fehlt -> Teil läuft ohne
   document_max_chars: 12000  # länger -> gekürzt (Warnung), RAG folgt; bei Erhöhung ollama_num_ctx mitziehen
+  parent_caption: false  # Pipeline 3e: Caption der Baugruppe als Kontext, Eltern vor Kindern
   variant: baseline       # Standard, wenn kein --variant
   variants:
     baseline: { input_views: part+highlight, asset_name: true }
@@ -55,6 +56,7 @@ caption:              # Pipeline 3, Vorversuche und Begründungen: docs/pipeline
     hier: { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
     doc: { input_views: part+highlight, asset_name: true, document: true }  # Pipeline 3h
     hier_doc: { input_views: part+highlight, asset_name: true, hierarchy: true, document: true }  # Pipeline 3h
+    topdown: { input_views: part+highlight, asset_name: predicted, parent_caption: true }  # Pipeline 3e
 
 summarize:
   model: null          # LLM, siehe docs/research/cap3d.md
