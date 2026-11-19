@@ -104,6 +104,7 @@ variants:
   noname:   { input_views: part+highlight, asset_name: false }  # neutral ("object")
   full:     { input_views: asset+part+highlight+group, asset_name: true }  # Pipeline 3c
   hier:     { input_views: part+highlight, asset_name: true, hierarchy: true }  # Pipeline 3d
+  topdown:  { input_views: part+highlight, asset_name: predicted, parent_caption: true }  # Pipeline 3e
 ```
 Views (`input_views`, mit `+` kombiniert, je View ein Rasterbild):
 
@@ -128,11 +129,27 @@ uv run python -m vuse_xr.cap3d.structure --config configs/cap3d_uuid.yaml --only
 ```
 Im JSON steht der Block zusätzlich unter `meta.structure`. Auswertung auf dem UUID-Set (`baseline` vs. `hier`).
 
+**Mehrstufig / Top-down (Pipeline 3e, Variante `topdown`):** erst das Asset, dann die Baugruppen, dann die Teile.
+- *Stufe 1:* Jedes Asset wird einmal nur aus seinen Asset-Renders beschrieben (`name`, `description`), ohne Dateinamen.
+  Ergebnis in `captions/<modell>/<variante>/_assets/<asset>.json` (14 Aufrufe). Braucht `render --mode asset`.
+- *Stufe 2:* Der Teile-Prompt bekommt die Asset-Beschreibung als Kontext. `asset_name: predicted` nimmt deren `name`
+  als Asset-Typ statt des Dateinamens (Q3).
+- *`parent_caption: true`:* Teile werden nach Tiefe sortiert (Eltern vor Kindern). Die Caption der Baugruppe
+  (`group_of()`, Hüllen übersprungen) kommt aus dem Output-Ordner in den Prompt. Fehlt sie (Baugruppe ohne Renders
+  oder fehlgeschlagen), wird das Kind übersprungen und nicht ohne Kontext beschrieben.
+```bash
+uv run python -m vuse_xr.cap3d.render --mode asset                                    # Asset-Renders für Stufe 1
+uv run python -m vuse_xr.cap3d.caption --variant topdown --assets-only                # nur Stufe 1, alle Assets
+uv run python -m vuse_xr.cap3d.caption --variant topdown --only centrifuge            # Stufe 1 + Teile top-down
+```
+In `meta` stehen zusätzlich `asset_caption` und `parent_caption` (der Kontext, den das Teil bekommen hat), damit sich in
+4b die Fehlerfortpflanzung verfolgen lässt: falsch benannte Baugruppe → Kinder erben den Fehler.
+
 Prompt und Bilder baut `build_input()` in `caption.py` – neue Ideen kommen dort als Baustein dazu.
 Varianten immer in `cap3d.yaml` und `cap3d_uuid.yaml` gleich halten.
 
 Output: `data/processed/cap3d/captions/<modell>/<variante>/<part_id>.json` – ein Ordner pro Modell und Variante, damit
-man vergleichen kann. In `meta` stehen zusätzlich `variant`, `variant_cfg`, `group` (gezeigte Baugruppe oder `null`) und der komplette `prompt`.
+man vergleichen kann. In `meta` stehen zusätzlich `variant`, `variant_cfg`, `group` (Baugruppe über dem Teil oder `null`) und der komplette `prompt`.
 
 ## Pipeline 4a: Testset mit UUID-Knotennamen (`scripts/make_uuid_testset.py`)
 
