@@ -64,3 +64,19 @@ def test_prompt_has_context_but_no_node_names(monkeypatch):
     assert "an electric hotplate" in prompt and "control panel" in prompt
     for name in ["99_test", "Knob", "Base", "Hull", "test"]:
         assert name not in prompt
+
+
+def test_asset_ref_predicted_empty_name_falls_back():
+    assert asset_ref(MAPPING["99_test__Lid"], CC, {"name": " ", "description": ""}) == "object"
+    assert asset_ref(MAPPING["99_test__Lid"], CC, {"description": ""}) == "object"
+
+
+def test_caption_assets_passes_quota_through(monkeypatch, tmp_path):
+    def quota(*a, **k):
+        raise caption.QuotaExceeded("Tageslimit")
+    monkeypatch.setattr(caption, "render_root", lambda cfg, mode: tmp_path)
+    monkeypatch.setattr(caption, "is_done", lambda root, stem: True)
+    monkeypatch.setattr(caption, "grid_png", lambda view_dir, tile: b"png")
+    monkeypatch.setattr(caption, "call_with_retry", quota)
+    with pytest.raises(caption.QuotaExceeded):
+        caption.caption_assets(["99_test"], {"backend": "ollama", "model": "m"}, {}, tmp_path / "_assets", False)

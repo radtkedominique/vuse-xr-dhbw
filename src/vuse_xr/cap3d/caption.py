@@ -148,7 +148,7 @@ def asset_ref(entry: dict, cc: dict, asset_cap: dict | None = None) -> str:
     if mode == "predicted":
         if not asset_cap:
             raise ValueError("asset_name: predicted braucht die Asset-Caption aus Stufe 1")
-        return asset_cap["name"].strip().lower()
+        return (asset_cap.get("name") or "").strip().lower() or "object"  # leerer Name aus Stufe 1
     raise ValueError(f"caption.asset_name: unbekannter Wert {mode!r} (true | false | predicted)")
 
 
@@ -311,6 +311,8 @@ def caption_assets(stems: list[str], cc: dict, cfg: dict, asset_dir: Path, force
             cap, usage = call_with_retry(cc["backend"], ASSET_PROMPT,
                                          [grid_png(root / "Cap3D_imgs" / stem, cc.get("grid_tile", 256))],
                                          cc, ASSET_SCHEMA)
+        except QuotaExceeded:  # nach oben durchreichen, main() bricht ab
+            raise
         except (RuntimeError, json.JSONDecodeError, KeyError) as e:
             log.error("Asset %s: %s", stem, e)
             continue
@@ -421,7 +423,8 @@ def main() -> None:
         parent = group_of(entry, mapping)
         if cc.get("parent_caption") and parent:
             pf = out_dir / f"{parent}.json"
-            if not pf.exists():  # nicht ohne Kontext beschreiben
+            # nicht ohne Kontext beschreiben; bei --force keine alte Caption einer gerade fehlgeschlagenen Baugruppe
+            if parent in failed or parent in skipped or not pf.exists():
                 log.debug("%s: Baugruppe %s noch nicht beschrieben – übersprungen", part_id, parent)
                 skipped.append(part_id)
                 continue
