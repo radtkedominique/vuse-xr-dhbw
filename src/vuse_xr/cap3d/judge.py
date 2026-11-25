@@ -80,7 +80,7 @@ SCHEMA = {
 
 
 class BudgetExceeded(RuntimeError):
-    """--max-cost erreicht oder OpenRouter-Guthaben leer – keine weiteren Anfragen."""
+    """--max-cost, OpenRouter-Guthaben oder Tageslimit (Free-Modelle) erreicht – keine weiteren Anfragen."""
 
 
 @dataclass(frozen=True)

@@ -221,9 +221,9 @@ __marimo__/
 
 # --- Projekt ---
 .idea/
-data/**
-!data/**/
-!data/**/.gitkeep
+#data/**
+#!data/**/
+#!data/**/.gitkeep
 
 # three.js (scripts/setup_threejs.sh)
 third_party/

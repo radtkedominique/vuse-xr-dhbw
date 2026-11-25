@@ -149,3 +149,18 @@ def test_prompt_v1_exists_and_lists_all_categories():
     p = judge.load_prompt("v1")
     for cat in judge.SCORES:
         assert cat in p.text
+
+
+def test_daily_limit_stops_without_retries(tmp_path, api, monkeypatch):
+    import io
+    import urllib.error
+    calls, answers = api
+
+    def fake_http(url, body, headers, timeout):
+        calls.append(body)
+        raise urllib.error.HTTPError(url, 429, "x", {}, io.BytesIO(b"Rate limit exceeded: free-models-per-day"))
+
+    monkeypatch.setattr(judge, "http", fake_http)
+    with pytest.raises(judge.BudgetExceeded, match="Tageslimit"):
+        judge.judge_one(PART, CAP, PROMPT, "vendor/judge", {**JC, "retries": 3}, tmp_path)
+    assert len(calls) == 1

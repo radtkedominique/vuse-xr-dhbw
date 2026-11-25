@@ -57,16 +57,19 @@ models:
     notes: über OpenRouter an Anthropic, Datenrichtlinie prüfen
 
 judge:                 # LLM-Judge über OpenRouter (judge.py), Key: OPENROUTER_API_KEY in .env
-  model: openai/gpt-4.1-mini-2025-04-14  # vorläufig (25.11.), fester Snapshot, kein Reasoning; Validierung 4.4 steht aus
+  model: particle-ai/particle-1:free  # Pilot (25.11.): kostenlos, DeepSeek-Familie (post-trained auf V4.1 Flash),
+                                     #   Reasoning-Modell, Free-Limit -> langsam. Bezahlte Alternative: openai/gpt-4.1-mini-2025-04-14
+                                     #   Verworfen: google/gemma-4-31b-it:free (Google-Familie wie M4, gleiches Free-Limit)
   prompt: v1           # src/vuse_xr/cap3d/judge_prompts/v1.md – Änderung = neue Version, nie v1 überschreiben
   temperature: 0
   max_tokens: 400      # Antwort ist ein kurzes JSON; Reasoning-Tokens zählen mit
   reasoning: null      # OpenRouter-Parameter, z. B. { effort: minimal } bei Reasoning-Modellen; GPT-4.1 hat keins
-  require_parameters: true  # nur Anbieter, die alle Parameter (JSON-Schema, Temperatur) unterstützen
+  require_parameters: false  # Free-Anbieter können nicht alle Parameter (Gemma: HTTP 404) -> Schema nur Hinweis,
+                            #   judge.py validiert selbst; bei bezahltem Judge wieder true
   retries: 5           # bei 429/5xx/Timeout mit wachsender Wartezeit neu versuchen
   invalid_retries: 1   # ungültiges oder widersprüchliches JSON: so oft neu fragen, dann fehlgeschlagen
   timeout: 60          # Sekunden pro Anfrage
-  workers: 4           # parallele Anfragen
+  workers: 1           # parallele Anfragen; Free-Modelle: 1 (Rate-Limit 429), bezahlt: 4
   out_dir: eval/judge  # relativ zu paths.output -> eval/judge/<judge>/<modell>/<variante>/<part_id>.json
   # Familien der bewerteten Modelle (Self-Preference-Bias, 4.3) – fliegen aus --list-candidates raus
   exclude_families: [qwen, nvidia, google, anthropic]
