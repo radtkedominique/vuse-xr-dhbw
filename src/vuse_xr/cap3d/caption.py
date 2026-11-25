@@ -5,6 +5,7 @@
     uv run python -m vuse_xr.cap3d.caption --backend ollama --model qwen2.5vl:7b --only torque_wrench
     uv run python -m vuse_xr.cap3d.caption --variant noname --only torque_wrench   # andere Variante
     uv run python -m vuse_xr.cap3d.caption --variant topdown --assets-only          # nur Stufe 1 (Pipeline 3e)
+    uv run python -m vuse_xr.cap3d.caption --config configs/cap3d_uuid.yaml --model-id M2 --only centrifuge
 
 Input:
     Renders aus Pipeline 2 (render_root(cfg, mode)/Cap3D_imgs/<part_id>/00020.png … 00027.png)
@@ -48,8 +49,12 @@ Ein Ordner pro Modell und Variante, damit sich Ergebnisse vergleichen lassen.
 Bereits beschriebene Teile werden übersprungen (--force beschreibt neu).
 
 Backends (caption.backend):
-    gemini  Google Gemini API, Key über GEMINI_API_KEY (Umgebung oder .env im Repo-Root)
-    ollama  lokales Modell über Ollama (caption.ollama_url)
+    gemini      Google Gemini API, Key über GEMINI_API_KEY (Umgebung oder .env im Repo-Root)
+    ollama      lokales Modell über Ollama (caption.ollama_url)
+    openrouter  OpenRouter (OpenAI-kompatibel), Key über OPENROUTER_API_KEY; JSON-Schema strict, nur Anbieter,
+                die alle Parameter unterstützen. meta.tokens enthält zusätzlich model_version (ausgeliefert),
+                provider, cost (USD) und generation_id.
+--model-id M2 nimmt backend, model, reasoning und temperature aus configs/models.yaml (models:).
 """
 from __future__ import annotations
 
@@ -77,6 +82,8 @@ from .structure import build_tree, describe, group_of
 log = logging.getLogger("vuse_xr.cap3d.caption")  # fester Name: bei python -m wäre __name__ == "__main__"
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL_KEYS = ("backend", "model", "reasoning", "temperature", "max_tokens")  # aus models.yaml übernommen
 RETRY_STATUS = {429, 500, 502, 503, 504}  # Überlastung / Rate-Limit -> später nochmal versuchen
 
 SCHEMA = {
@@ -282,11 +289,67 @@ def call_ollama(prompt: str, images: list[bytes], cc: dict, schema: dict = SCHEM
     return json.loads(r["message"]["content"]), usage
 
 
-BACKENDS = {"gemini": call_gemini, "ollama": call_ollama}
+def strict_schema(schema: dict) -> dict:
+    """Strict-Modus (OpenAI-Stil) verlangt additionalProperties: false und alle Felder in required."""
+    return {**schema, "additionalProperties": False, "required": list(schema["properties"])}
+
+
+def openrouter_body(prompt: str, images: list[bytes], cc: dict, schema: dict) -> dict:
+    content = [{"type": "text", "text": prompt}] + [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(img).decode()}}
+        for img in images
+    ]
+    body = {
+        "model": cc["model"],
+        "messages": [{"role": "user", "content": content}],
+        "response_format": {"type": "json_schema",
+                            "json_schema": {"name": "caption", "strict": True, "schema": strict_schema(schema)}},
+        "usage": {"include": True},
+    }
+    if cc.get("temperature", 0) is not None:  # null in models.yaml = Modellstandard (manche Thinking-Modelle)
+        body["temperature"] = cc.get("temperature", 0)
+    if cc.get("max_tokens"):
+        body["max_tokens"] = cc["max_tokens"]
+    if cc.get("reasoning"):
+        body["reasoning"] = cc["reasoning"]
+    if cc.get("require_parameters", True):
+        body["provider"] = {"require_parameters": True}
+    return body
+
+
+def call_openrouter(prompt: str, images: list[bytes], cc: dict, schema: dict = SCHEMA) -> tuple[dict, dict]:
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if not key:
+        sys.exit("OPENROUTER_API_KEY fehlt – in .env eintragen (siehe .env.example).")
+    r = post_json(OPENROUTER_URL, openrouter_body(prompt, images, cc, schema),
+                  {"Authorization": f"Bearer {key}", "X-Title": "vuse-xr-dhbw caption"}, cc.get("timeout", 120))
+    if "error" in r:  # Anbieterfehler kommen teils mit HTTP 200
+        raise RuntimeError(f"OpenRouter: {r['error']}")
+    text = r["choices"][0]["message"].get("content")
+    if not text:
+        raise RuntimeError(f"leere Antwort (finish_reason {r['choices'][0].get('finish_reason')})")
+    text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", text)  # manche Anbieter setzen trotz Schema Fences
+    u = r.get("usage") or {}
+    usage = {"input": u.get("prompt_tokens"), "output": u.get("completion_tokens"),
+             "thinking": (u.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+             "model_version": r.get("model"), "provider": r.get("provider"), "cost": u.get("cost"),
+             "generation_id": r.get("id")}
+    return json.loads(text), usage
+
+
+BACKENDS = {"gemini": call_gemini, "ollama": call_ollama, "openrouter": call_openrouter}
 
 
 class QuotaExceeded(RuntimeError):
-    """Tageslimit erreicht (z. B. Gemini-Gratis-Tarif) – weitere Versuche heute zwecklos."""
+    """Tageslimit oder Guthaben erreicht (Gemini-Gratis-Tarif, OpenRouter free/402) – weitere Versuche zwecklos."""
+
+
+def apply_model_id(cc: dict, models: dict, model_id: str) -> dict:
+    """Einstellungen eines Modells aus models.yaml (models: M1 …) in die caption-Config übernehmen."""
+    if model_id not in models:
+        sys.exit(f"Modell {model_id!r} nicht in models.yaml – vorhanden: {', '.join(models)}")
+    entry = models[model_id]
+    return {**cc, **{k: entry[k] for k in MODEL_KEYS if k in entry}, "model_id": model_id}
 
 
 def call_with_retry(backend: str, prompt: str, images: list[bytes], cc: dict,
@@ -297,8 +360,10 @@ def call_with_retry(backend: str, prompt: str, images: list[bytes], cc: dict,
             return BACKENDS[backend](prompt, images, cc, schema)
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")
-            if e.code == 429 and "PerDay" in detail:
+            if e.code == 429 and ("PerDay" in detail or "per-day" in detail):
                 raise QuotaExceeded("Tageslimit des Anbieters erreicht, morgen weitermachen") from e
+            if e.code == 402:  # OpenRouter: Guthaben leer
+                raise QuotaExceeded(f"Guthaben reicht nicht (HTTP 402): {detail[:200]}") from e
             detail = detail[:300]
             if e.code not in RETRY_STATUS or attempt == retries:
                 raise RuntimeError(f"HTTP {e.code}: {detail}") from e
@@ -357,6 +422,8 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="auch bereits beschriebene Teile neu beschreiben")
     ap.add_argument("--backend", choices=sorted(BACKENDS), help="überschreibt caption.backend")
     ap.add_argument("--model", help="überschreibt caption.model")
+    ap.add_argument("--model-id", help="Modell aus configs/models.yaml (z. B. M2): backend, model, reasoning, …")
+    ap.add_argument("--models-config", default=str(ROOT / "configs" / "models.yaml"))
     ap.add_argument("--variant", help="Variante aus caption.variants (Standard: caption.variant)")
     ap.add_argument("--assets-only", action="store_true",
                     help="nur Stufe 1 (Pipeline 3e): alle Assets beschreiben, keine Teile")
@@ -376,6 +443,8 @@ def main() -> None:
         sys.exit(f"Variante {variant!r} unbekannt – vorhanden: {', '.join(variants)}")
     variant_cfg = dict(variants[variant] or {})
     cc.update(variant_cfg)  # Variante überschreibt die Defaults
+    if args.model_id:
+        cc = apply_model_id(cc, load_cfg(Path(args.models_config)).get("models") or {}, args.model_id)
     cc["backend"] = args.backend or cc["backend"]
     cc["model"] = args.model or cc["model"]
     if not cc["model"]:
@@ -474,7 +543,8 @@ def main() -> None:
         result = {
             "part_id": part_id,
             "caption": caption,
-            "meta": {"backend": cc["backend"], "model": cc["model"], "variant": variant, "variant_cfg": variant_cfg,
+            "meta": {"backend": cc["backend"], "model": cc["model"], "model_id": cc.get("model_id"),
+                     "variant": variant, "variant_cfg": variant_cfg,
                      "input_views": cc["input_views"], "group": parent,
                      "structure": describe(part_id, mapping, tree) if tree else None,
                      "document": {k: v for k, v in doc.items() if k != "text"} if doc else None,

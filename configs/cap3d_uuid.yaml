@@ -35,7 +35,7 @@ render:
     colorspace: auto   # auto = wie Blender (asset/part linear wie DiffuRank-"Raw", highlight sRGB) | linear | srgb
 
 caption:              # Pipeline 3, Vorversuche und Begründungen: docs/pipeline3.md
-  backend: gemini      # gemini (Key in .env, siehe .env.example) | ollama (lokal)
+  backend: gemini      # gemini | openrouter (Keys in .env, siehe .env.example) | ollama (lokal); oder --model-id M1…M5 (configs/models.yaml)
   model: gemini-3.8-flash  # bestes Modell im Gemini-Gratis-Tarif; lokal z. B. qwen2.5vl:7b
   input_views: part+highlight  # Views aus asset | part | highlight | group, mit + kombiniert – je View ein Rasterbild der 8 Views
   grid_tile: 256       # Kantenlänge einer View im Raster (4×2 -> 1024×512 px)

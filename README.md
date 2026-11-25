@@ -92,7 +92,7 @@ uv run python -m vuse_xr.cap3d.caption --backend ollama --model qwen2.5vl:7b # l
 uv run python -m vuse_xr.cap3d.caption --variant noname --only torque_wrench # andere Variante
 uv run python -m vuse_xr.cap3d.caption --variant full --only magnetic_stirrer --limit 3  # alle 4 Views
 ```
-Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `--variant`, `-v`/`-q`. Fertige Teile werden übersprungen;
+Optionen: `--only <text>`, `--limit N`, `--force`, `--backend`, `--model`, `--model-id M1…M5` (aus `configs/models.yaml`), `--variant`, `-v`/`-q`. Fertige Teile werden übersprungen;
 bei Überlastung (HTTP 503) wird automatisch neu versucht. Beim Tageslimit (Gemini-Gratis-Tarif: 20 Anfragen pro Tag
 und Modell) bricht der Lauf ab – am nächsten Tag einfach neu starten.
 Einstellungen in `configs/cap3d.yaml` unter `caption:` (Backend, Modell, `input_views`, Rastergröße).

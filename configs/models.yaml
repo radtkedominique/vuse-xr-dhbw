@@ -1,0 +1,72 @@
+# Modelle der Studie: bewertete Vision-Modelle (models:) und LLM-Judge (judge:), alle Aufrufe außer Ollama über OpenRouter
+# Notion: Evaluationskonzept: Varianten × Modelle, Abschnitte 2.2 und 4.3. Datenpfade kommen aus configs/cap3d_uuid.yaml.
+
+# Bewertete Vision-Modelle (Konzept 2.2, Auswahl Nico, Stand 25.11.2026). Ein Eintrag pro Modell:
+#   backend    caption.backend (gemini | ollama | openrouter – openrouter fehlt in caption.py noch)
+#   model      exakte ID beim Backend; Caption-Ordner = safe_name(model), z. B. qwen_qwen3-vl-235b-a22b-instruct
+#   price      $ pro 1 Mio. Tokens [input, output]; Basis für $ pro 1.000 Teile (E4). Preise vor dem Lauf prüfen
+#   batch      Batch-Preis [input, output] beim Anbieter, null = kein Batch. Über OpenRouter nicht nutzbar
+#   reasoning  OpenRouter-Parameter für Thinking, fest pro Modell (Konzept 2.3); null = nicht festgelegt
+#   optional: temperature (Standard 0; null = Modellstandard, falls ein Thinking-Modell 0 ablehnt), max_tokens
+# Nutzung: caption.py --model-id M2 übernimmt backend, model, reasoning, temperature, max_tokens.
+models:
+  M1:
+    name: Qwen2.5-VL 7B
+    type: lokal
+    backend: ollama
+    model: qwen2.5vl:7b
+    price: [0, 0]
+    batch: null
+    reasoning: null        # kein Thinking
+    notes: lokale Rechenzeit ca. 11–20 h für den Hauptlauf, Daten bleiben lokal
+  M2:
+    name: Qwen3-VL 235B A22B Instruct
+    type: bezahlt
+    backend: openrouter
+    model: qwen/qwen3-vl-235b-a22b-instruct
+    price: [0.21, 1.90]
+    batch: null
+    reasoning: null        # Instruct-Modell, kein Thinking
+    notes: über OpenRouter an Anbieter, Datenrichtlinie prüfen
+  M3:
+    name: NVIDIA Nemotron 3.5 Super VL (free)
+    type: gratis
+    backend: openrouter
+    model: nvidia/nemotron-3.5-super-vl:free
+    price: [0, 0]
+    batch: null
+    reasoning: null        # TODO festlegen (niedrig/aus), Konzept 2.2
+    notes: Free-Tageslimit mit unserem Key prüfen; Free-Anbieter können Prompts speichern, nur Testdaten
+  M4:
+    name: Gemini 4 Carbon
+    type: bezahlt
+    backend: openrouter
+    model: google/gemini-4-carbon
+    price: [2.0, 10.0]
+    batch: [1.0, 5.0]      # nur direkt bei Google
+    reasoning: null        # TODO festlegen, Konzept 2.2
+    notes: über OpenRouter an Google, Datenrichtlinie prüfen
+  M5:
+    name: Claude Sonnet 5.5
+    type: bezahlt
+    backend: openrouter
+    model: anthropic/claude-sonnet-5.5
+    price: [2.0, 10.0]
+    batch: [1.0, 5.0]      # nur direkt bei Anthropic
+    reasoning: null        # TODO festlegen, Konzept 2.2
+    notes: über OpenRouter an Anthropic, Datenrichtlinie prüfen
+
+judge:                 # LLM-Judge über OpenRouter (judge.py), Key: OPENROUTER_API_KEY in .env
+  model: openai/gpt-4.1-mini-2025-04-14  # vorläufig (25.11.), fester Snapshot, kein Reasoning; Validierung 4.4 steht aus
+  prompt: v1           # src/vuse_xr/cap3d/judge_prompts/v1.md – Änderung = neue Version, nie v1 überschreiben
+  temperature: 0
+  max_tokens: 400      # Antwort ist ein kurzes JSON; Reasoning-Tokens zählen mit
+  reasoning: null      # OpenRouter-Parameter, z. B. { effort: minimal } bei Reasoning-Modellen; GPT-4.1 hat keins
+  require_parameters: true  # nur Anbieter, die alle Parameter (JSON-Schema, Temperatur) unterstützen
+  retries: 5           # bei 429/5xx/Timeout mit wachsender Wartezeit neu versuchen
+  invalid_retries: 1   # ungültiges oder widersprüchliches JSON: so oft neu fragen, dann fehlgeschlagen
+  timeout: 60          # Sekunden pro Anfrage
+  workers: 4           # parallele Anfragen
+  out_dir: eval/judge  # relativ zu paths.output -> eval/judge/<judge>/<modell>/<variante>/<part_id>.json
+  # Familien der bewerteten Modelle (Self-Preference-Bias, 4.3) – fliegen aus --list-candidates raus
+  exclude_families: [qwen, nvidia, google, anthropic]
