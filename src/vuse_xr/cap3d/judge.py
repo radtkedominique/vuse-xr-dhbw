@@ -204,6 +204,8 @@ def call_openrouter(system: str, user: str, model: str, jc: dict) -> dict:
             detail = e.read().decode(errors="replace")[:300]
             if e.code == 402:
                 raise BudgetExceeded(f"OpenRouter-Guthaben reicht nicht (HTTP 402): {detail}") from e
+            if e.code == 429 and "per-day" in detail:  # Tageslimit Free-Modelle: Retries zwecklos
+                raise BudgetExceeded(f"Tageslimit erreicht, morgen weitermachen (HTTP 429): {detail}") from e
             if e.code not in RETRY_STATUS or attempt == retries:
                 raise RuntimeError(f"HTTP {e.code}: {detail}") from e
             reason = f"HTTP {e.code}"

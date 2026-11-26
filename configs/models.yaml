@@ -73,3 +73,6 @@ judge:                 # LLM-Judge über OpenRouter (judge.py), Key: OPENROUTER_
   out_dir: eval/judge  # relativ zu paths.output -> eval/judge/<judge>/<modell>/<variante>/<part_id>.json
   # Familien der bewerteten Modelle (Self-Preference-Bias, 4.3) – fliegen aus --list-candidates raus
   exclude_families: [qwen, nvidia, google, anthropic]
+
+grounding:             # grounding.py: lokales Embedding-Modell (fastembed), keine API
+  embedding_model: BAAI/bge-small-en-v1.5  # einmaliger Download nach data/interim/fastembed_cache
