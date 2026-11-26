@@ -54,6 +54,7 @@ models:
     price: [2.0, 10.0]
     batch: [1.0, 5.0]      # nur direkt bei Anthropic
     reasoning: null        # TODO festlegen, Konzept 2.2
+    temperature: null      # Sonnet 5.5 lehnt temperature 0 ab (OpenRouter: 404 No endpoints found)
     notes: über OpenRouter an Anthropic, Datenrichtlinie prüfen
 
 judge:                 # LLM-Judge über OpenRouter (judge.py), Key: OPENROUTER_API_KEY in .env
