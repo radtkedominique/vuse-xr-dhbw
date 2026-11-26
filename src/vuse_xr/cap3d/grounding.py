@@ -4,7 +4,7 @@
     uv run python -m vuse_xr.cap3d.grounding --config configs/cap3d_uuid.yaml --models qwen2.5vl_7b --variants baseline
 
 Anwendungsfall von VUSE (Q1/Q2): „highlight the ratchet head“ -> welcher Knoten? Pro Modell × Variante:
-    Query       normalisierter Originalname (Ratchet_Head -> "ratchet head", eval_data.norm_name)
+    Query       Originalname ohne Nummern (Ratchet_Head -> "ratchet head", Sample_Tube_5 -> "sample tube")
     Kandidaten  alle Teile desselben Assets mit Caption in dieser Kombination, Text "name. type. function."
     Ranking     Kosinus-Ähnlichkeit lokaler Embeddings (grounding.embedding_model in configs/models.yaml)
     Treffer     das Teil selbst oder ein Zwilling (gleicher twin_key, z. B. Rubber_Foot_1 = Rubber_Foot_2)
@@ -30,7 +30,7 @@ import numpy as np
 
 from ..log import add_log_args, setup_logging
 from .caption import safe_name
-from .eval_data import Caption, Part, captions_dir, iter_captions, load_parts, norm_name, twin_key
+from .eval_data import Caption, Part, captions_dir, iter_captions, load_parts, twin_key
 from .evaluate import write_csv
 from .render import ROOT, load_cfg
 
@@ -71,7 +71,8 @@ def candidate_text(cap: dict) -> str:
 
 
 def query_text(part: Part) -> str:
-    return norm_name(part.node)
+    """Wie ein Nutzer das Teil nennt: ohne Nummern (Sample_Tube_5 -> "sample tube", Pin_-0.145 -> "pin")."""
+    return twin_key(part.node)
 
 
 def rank_combo(parts: dict[str, Part], caps: dict[str, Caption], embed: Embed,
